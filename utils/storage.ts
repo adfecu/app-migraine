@@ -214,6 +214,7 @@ export interface HeadacheRiskEvaluation {
   percentage: number; // CL/threshold * 100
   prediction: string;
   dailyTensionLoad: number;
+  reasons: { met: string[]; notMet: string[] };
 }
 
 // Weights for tension load calculation
@@ -279,6 +280,48 @@ function determineRiskZone(cumulativeLoad: number, threshold: number): { zone: H
 export async function evaluateHeadacheRisk(checkIn: CheckIn): Promise<HeadacheRiskEvaluation> {
   const answers = mapAnswersByQuestion(checkIn);
   
+  // Get values with defaults
+  const sleepQuality = typeof answers['sleep'] === 'number' ? answers['sleep'] : 5;
+  const stressLevel = typeof answers['stress'] === 'number' ? answers['stress'] : 5;
+  const alcoholConsumption = typeof answers['alcohol'] === 'number' ? answers['alcohol'] : 0;
+  const caffeineDeviation = typeof answers['caffeine'] === 'number' ? answers['caffeine'] : 5;
+  
+  // Generate reasons
+  const reasonsMet: string[] = [];
+  const reasonsNotMet: string[] = [];
+  
+  // Sleep: Low sleep quality (< 4) contributes to risk
+  if (sleepQuality < 4) {
+    reasonsMet.push(`Sueño: ${sleepQuality}/10 (poco descanso)`);
+  } else {
+    reasonsNotMet.push(`Sueño: ${sleepQuality}/10 (suficiente)`);
+  }
+  
+  // Stress: High stress (> 6) contributes to risk
+  if (stressLevel > 6) {
+    reasonsMet.push(`Estrés: ${stressLevel}/10 (alto)`);
+  } else {
+    reasonsNotMet.push(`Estrés: ${stressLevel}/10 (bajo)`);
+  }
+  
+  // Alcohol: Consumption > 5 contributes to risk
+  if (alcoholConsumption > 5) {
+    reasonsMet.push(`Alcohol: ${alcoholConsumption}/10 (mucho más de lo habitual)`);
+  } else if (alcoholConsumption === 0) {
+    reasonsNotMet.push(`Alcohol: ${alcoholConsumption}/10 (ninguno)`);
+  } else {
+    reasonsNotMet.push(`Alcohol: ${alcoholConsumption}/10 (consumo habitual)`);
+  }
+  
+  // Caffeine: Both withdrawal (0) and excess (> 6) contribute to risk
+  if (caffeineDeviation === 0) {
+    reasonsMet.push(`Cafeína: ${caffeineDeviation}/10 (ninguna - abstinencia)`);
+  } else if (caffeineDeviation > 6) {
+    reasonsMet.push(`Cafeína: ${caffeineDeviation}/10 (mucho más de lo habitual)`);
+  } else {
+    reasonsNotMet.push(`Cafeína: ${caffeineDeviation}/10 (consumo habitual)`);
+  }
+  
   // Calculate daily tension load
   const dailyTensionLoad = calculateDailyTensionLoad(answers);
   
@@ -301,6 +344,7 @@ export async function evaluateHeadacheRisk(checkIn: CheckIn): Promise<HeadacheRi
     percentage,
     prediction,
     dailyTensionLoad,
+    reasons: { met: reasonsMet, notMet: reasonsNotMet },
   };
 }
 

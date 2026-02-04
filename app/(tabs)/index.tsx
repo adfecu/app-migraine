@@ -290,6 +290,22 @@ export default function TabOneScreen() {
                 {headacheRisk.prediction}
               </Text>
               
+              {/* Reasons */}
+              <View style={styles.reasonsContainer}>
+                {headacheRisk.reasons.met.map((reason, index) => (
+                  <View key={`met-${index}`} style={styles.reasonRow}>
+                    <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.danger }]}>✗</Text>
+                    <Text style={styles.reasonText}>{reason}</Text>
+                  </View>
+                ))}
+                {headacheRisk.reasons.notMet.map((reason, index) => (
+                  <View key={`notmet-${index}`} style={styles.reasonRow}>
+                    <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.safe }]}>✗</Text>
+                    <Text style={styles.reasonText}>{reason}</Text>
+                  </View>
+                ))}
+              </View>
+              
               {/* CL / Threshold Details */}
               <View style={styles.clDetailsContainer}>
                 <View style={styles.clDetailItem}>
