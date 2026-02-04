@@ -1,3 +1,4 @@
+import { PermissionStatus } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
 
 // Configure how notifications are handled when app is in foreground
@@ -18,18 +19,28 @@ const DAILY_CHECKIN_NOTIFICATION_ID = 'daily-checkin-reminder';
  */
 export async function requestNotificationPermissions(): Promise<Notifications.NotificationPermissionsStatus> {
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+    const existingPermissions = await Notifications.getPermissionsAsync();
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+    if (existingPermissions.status !== 'granted') {
+      const requestedPermissions = await Notifications.requestPermissionsAsync();
+      return requestedPermissions;
     }
 
-    return { status: finalStatus };
+    return existingPermissions;
   } catch (error) {
     console.error('Error requesting notification permissions:', error);
-    return { status: 'undetermined' };
+    // Return permissions from getPermissionsAsync as fallback (should always work)
+    try {
+      return await Notifications.getPermissionsAsync();
+    } catch {
+      // Last resort: return a properly typed denied status
+      return {
+        status: PermissionStatus.DENIED as Notifications.PermissionStatus,
+        granted: false,
+        expires: 'never' as const,
+        canAskAgain: false,
+      };
+    }
   }
 }
 
@@ -84,10 +95,11 @@ export async function scheduleDailyCheckinNotification(): Promise<string | null>
         priority: Notifications.AndroidNotificationPriority.HIGH,
       },
       trigger: {
+        type: 'daily',
         hour: 8,
         minute: 0,
         repeats: true,
-      },
+      } as Notifications.DailyTriggerInput,
     });
 
     console.log('Daily check-in notification scheduled for 8:00 AM:', notificationId);
