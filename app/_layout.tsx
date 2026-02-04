@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { migrateToSupabase, needsMigration } from '@/utils/migrateToSupabase';
+import { initializeNotifications } from '@/utils/notifications';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -57,6 +58,7 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
   const [migrationChecked, setMigrationChecked] = useState(false);
+  const [notificationsInitialized, setNotificationsInitialized] = useState(false);
 
   // Check and perform data migration when user is authenticated
   useEffect(() => {
@@ -88,6 +90,22 @@ function RootLayoutNav() {
     
     checkAndMigrate();
   }, [session, migrationChecked]);
+
+  // Initialize notifications when user is authenticated
+  useEffect(() => {
+    const setupNotifications = async () => {
+      if (!session || notificationsInitialized) return;
+      
+      try {
+        await initializeNotifications();
+        setNotificationsInitialized(true);
+      } catch (error) {
+        console.error('Failed to initialize notifications:', error);
+      }
+    };
+    
+    setupNotifications();
+  }, [session, notificationsInitialized]);
 
   useEffect(() => {
     if (loading) return;

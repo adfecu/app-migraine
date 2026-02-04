@@ -1,0 +1,131 @@
+import * as Notifications from 'expo-notifications';
+
+// Configure how notifications are handled when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+// Notification identifier for the daily check-in reminder
+const DAILY_CHECKIN_NOTIFICATION_ID = 'daily-checkin-reminder';
+
+/**
+ * Request notification permissions from the user
+ * @returns Promise resolving to the permission status
+ */
+export async function requestNotificationPermissions(): Promise<Notifications.NotificationPermissionsStatus> {
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    return { status: finalStatus };
+  } catch (error) {
+    console.error('Error requesting notification permissions:', error);
+    return { status: 'undetermined' };
+  }
+}
+
+/**
+ * Check if notification permissions are granted
+ * @returns Promise resolving to true if permissions are granted
+ */
+export async function hasNotificationPermissions(): Promise<boolean> {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error checking notification permissions:', error);
+    return false;
+  }
+}
+
+/**
+ * Cancel the daily check-in notification
+ */
+export async function cancelDailyCheckinNotification(): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(DAILY_CHECKIN_NOTIFICATION_ID);
+  } catch (error) {
+    console.error('Error canceling daily check-in notification:', error);
+  }
+}
+
+/**
+ * Schedule a daily notification at 8:00 AM
+ * @returns Promise resolving to the notification identifier, or null if scheduling failed
+ */
+export async function scheduleDailyCheckinNotification(): Promise<string | null> {
+  try {
+    // Check if we have permissions first
+    const hasPermissions = await hasNotificationPermissions();
+    if (!hasPermissions) {
+      console.warn('Notification permissions not granted. Cannot schedule daily check-in notification.');
+      return null;
+    }
+
+    // Cancel any existing notification with the same ID
+    await cancelDailyCheckinNotification();
+
+    // Schedule the daily notification for 8:00 AM
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      identifier: DAILY_CHECKIN_NOTIFICATION_ID,
+      content: {
+        title: 'Recordatorio de Check-in',
+        body: '¡Hora de hacer tu check-in diario!',
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: {
+        hour: 8,
+        minute: 0,
+        repeats: true,
+      },
+    });
+
+    console.log('Daily check-in notification scheduled for 8:00 AM:', notificationId);
+    return notificationId;
+  } catch (error) {
+    console.error('Error scheduling daily check-in notification:', error);
+    return null;
+  }
+}
+
+/**
+ * Initialize notifications: request permissions and schedule daily notification
+ * This should be called when the app starts and user is authenticated
+ */
+export async function initializeNotifications(): Promise<void> {
+  try {
+    // Request permissions
+    const permissionStatus = await requestNotificationPermissions();
+
+    if (permissionStatus.status === 'granted') {
+      // Schedule the daily notification
+      await scheduleDailyCheckinNotification();
+    } else {
+      console.warn('Notification permissions not granted. Daily check-in reminder will not be scheduled.');
+    }
+  } catch (error) {
+    console.error('Error initializing notifications:', error);
+  }
+}
+
+/**
+ * Get all scheduled notifications (for debugging)
+ */
+export async function getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+  try {
+    return await Notifications.getAllScheduledNotificationsAsync();
+  } catch (error) {
+    console.error('Error getting scheduled notifications:', error);
+    return [];
+  }
+}
