@@ -131,7 +131,7 @@ export const QUESTIONS: Question[] = [
       { value: 'compresas', label: 'Aplicar compresas (Frías o calientes)' },
       { value: 'relajacion', label: 'Ejercicios de relajación (Respiración, meditación, estiramientos suaves)' },
       { value: 'remedios_caseros', label: 'Remedios caseros (Por favor, especifica: ej. té de hierbas, aceites esenciales, cafeína, etc.)', hasTextInput: true },
-      { value: 'otro', label: 'Otro', hasTextInput: true },
+      { value: 'otro', label: 'Otra opción (especifique)', hasTextInput: true },
       { value: 'nada_mas', label: 'No hice nada más', exclusive: true },
     ],
   },
@@ -147,6 +147,7 @@ export const QUESTIONS: Question[] = [
       { value: 'comida', label: 'Algún alimento o bebida' },
       { value: 'menstruacion', label: 'Menstruación' },
       { value: 'pantallas', label: 'Pantallas o luz intensa' },
+      { value: 'otro', label: 'Otro', hasTextInput: true },
       { value: 'ninguno', label: 'No identifico ninguno', exclusive: true },
     ],
   },
@@ -162,10 +163,15 @@ export const QUESTIONS: Question[] = [
   {
     id: 'q_stress',
     text: '¿Qué tan estresado te sientes hoy?',
-    type: 'slider',
+    type: 'slider_labeled',
     conditional: false,
     sliderMin: 0,
     sliderMax: 10,
+    sliderLabels: [
+      { range: [0, 3], label: 'Leve' },
+      { range: [4, 7], label: 'Moderado' },
+      { range: [8, 10], label: 'Severo' },
+    ],
   },
   {
     id: 'q_alcohol',

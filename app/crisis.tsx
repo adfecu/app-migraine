@@ -96,6 +96,7 @@ export const CRISIS_QUESTIONS: Question[] = [
       { value: 'comida', label: 'Algún alimento o bebida' },
       { value: 'menstruacion', label: 'Menstruación' },
       { value: 'pantallas', label: 'Pantallas o luz intensa' },
+      { value: 'otro', label: 'Otra opción (especifique)', hasTextInput: true },
       { value: 'ninguno', label: 'No identifico ninguno', exclusive: true },
     ],
   },

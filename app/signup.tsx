@@ -7,6 +7,27 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useAuth } from '@/contexts/AuthContext';
 
+// Password validation utility function
+const validatePassword = (password: string): { isValid: boolean; error: string } => {
+  if (password.length < 8) {
+    return { isValid: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+  }
+
+  // Count numbers
+  const numberCount = (password.match(/\d/g) || []).length;
+  if (numberCount < 2) {
+    return { isValid: false, error: 'La contraseña debe contener al menos 2 números' };
+  }
+
+  // Check for special symbols
+  const specialSymbolRegex = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/;
+  if (!specialSymbolRegex.test(password)) {
+    return { isValid: false, error: 'La contraseña debe contener al menos 1 símbolo especial' };
+  }
+
+  return { isValid: true, error: '' };
+};
+
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,8 +52,10 @@ export default function SignUpScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.error);
       return;
     }
 
@@ -89,6 +112,36 @@ export default function SignUpScreen() {
         secureTextEntry
         autoComplete="new-password"
       />
+
+      {password.length > 0 && (
+        <View style={styles.passwordRequirements}>
+          <Text style={styles.requirementsTitle}>Requisitos de contraseña:</Text>
+          <View style={styles.requirementRow}>
+            <Text style={[styles.requirementIcon, password.length >= 8 && styles.requirementMet]}>
+              {password.length >= 8 ? '✓' : '✗'}
+            </Text>
+            <Text style={[styles.requirement, password.length >= 8 && styles.requirementMet]}>
+              Mínimo 8 caracteres
+            </Text>
+          </View>
+          <View style={styles.requirementRow}>
+            <Text style={[styles.requirementIcon, (password.match(/\d/g) || []).length >= 2 && styles.requirementMet]}>
+              {(password.match(/\d/g) || []).length >= 2 ? '✓' : '✗'}
+            </Text>
+            <Text style={[styles.requirement, (password.match(/\d/g) || []).length >= 2 && styles.requirementMet]}>
+              Al menos 2 números
+            </Text>
+          </View>
+          <View style={styles.requirementRow}>
+            <Text style={[styles.requirementIcon, /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) && styles.requirementMet]}>
+              {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) ? '✓' : '✗'}
+            </Text>
+            <Text style={[styles.requirement, /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) && styles.requirementMet]}>
+              Al menos 1 símbolo especial
+            </Text>
+          </View>
+        </View>
+      )}
 
       <TextInput
         style={[
@@ -168,6 +221,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
     fontSize: 16,
+  },
+  passwordRequirements: {
+    marginBottom: 16,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  requirementsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+    opacity: 0.8,
+  },
+  requirementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    backgroundColor: 'transparent',
+  },
+  requirementIcon: {
+    fontSize: 14,
+    marginRight: 8,
+    opacity: 0.5,
+    width: 16,
+  },
+  requirement: {
+    fontSize: 11,
+    opacity: 0.6,
+  },
+  requirementMet: {
+    opacity: 0.9,
+    color: '#4caf50',
   },
   button: {
     height: 50,
