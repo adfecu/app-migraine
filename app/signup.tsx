@@ -66,8 +66,7 @@ export default function SignUpScreen() {
     if (signUpError) {
       setError(signUpError.message);
     } else {
-      // On successful signup, navigate to main app or show confirmation
-      router.replace('/(tabs)');
+      router.replace('/onboarding');
     }
   };
 

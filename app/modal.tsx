@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import { Alert, ActivityIndicator, Platform, Pressable, StyleSheet } from 'react-native';
 
 import EditScreenInfo from '@/components/EditScreenInfo';
@@ -6,12 +8,19 @@ import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useAuth } from '@/contexts/AuthContext';
+import { ONBOARDING_COMPLETE_KEY } from '@/app/onboarding';
 import { useState } from 'react';
 
 export default function ModalScreen() {
   const colorScheme = useColorScheme();
   const { signOut, deleteAccount } = useAuth();
+  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
+
+  const handleDebugOnboarding = async () => {
+    await AsyncStorage.removeItem(ONBOARDING_COMPLETE_KEY);
+    router.replace('/onboarding');
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -57,6 +66,15 @@ export default function ModalScreen() {
       >
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
       </Pressable>
+
+      <View style={styles.debugSection}>
+        <Pressable
+          style={({ pressed }) => [styles.debugButton, pressed && styles.debugButtonPressed]}
+          onPress={handleDebugOnboarding}
+        >
+          <Text style={styles.debugButtonText}>Debug: Ver Onboarding</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.deleteSection}>
         <Pressable
@@ -109,6 +127,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  debugSection: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  debugButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7C7CC',
+    borderStyle: 'dashed',
+  },
+  debugButtonPressed: {
+    opacity: 0.6,
+  },
+  debugButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    opacity: 0.6,
   },
   deleteSection: {
     marginTop: 20,

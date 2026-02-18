@@ -70,10 +70,12 @@ export async function cancelDailyCheckinNotification(): Promise<void> {
 }
 
 /**
- * Schedule a daily notification at 8:00 AM
+ * Schedule a daily check-in notification at the specified time.
+ * @param hour Hour in 24-hour format (default 8)
+ * @param minute Minute (default 0)
  * @returns Promise resolving to the notification identifier, or null if scheduling failed
  */
-export async function scheduleDailyCheckinNotification(): Promise<string | null> {
+export async function scheduleDailyCheckinNotification(hour = 8, minute = 0): Promise<string | null> {
   try {
     // Check if we have permissions first
     const hasPermissions = await hasNotificationPermissions();
@@ -85,7 +87,7 @@ export async function scheduleDailyCheckinNotification(): Promise<string | null>
     // Cancel any existing notification with the same ID
     await cancelDailyCheckinNotification();
 
-    // Schedule the daily notification for 8:00 AM
+    const pad = (n: number) => String(n).padStart(2, '0');
     const notificationId = await Notifications.scheduleNotificationAsync({
       identifier: DAILY_CHECKIN_NOTIFICATION_ID,
       content: {
@@ -96,13 +98,13 @@ export async function scheduleDailyCheckinNotification(): Promise<string | null>
       },
       trigger: {
         type: 'daily',
-        hour: 8,
-        minute: 0,
+        hour,
+        minute,
         repeats: true,
       } as Notifications.DailyTriggerInput,
     });
 
-    console.log('Daily check-in notification scheduled for 8:00 AM:', notificationId);
+    console.log(`Daily check-in notification scheduled for ${pad(hour)}:${pad(minute)}:`, notificationId);
     return notificationId;
   } catch (error) {
     console.error('Error scheduling daily check-in notification:', error);

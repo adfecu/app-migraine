@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
@@ -9,7 +10,11 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { migrateToSupabase, needsMigration } from '@/utils/migrateToSupabase';
-import { initializeNotifications } from '@/utils/notifications';
+import { scheduleDailyCheckinNotification } from '@/utils/notifications';
+import {
+  NOTIFICATION_HOUR_KEY,
+  ONBOARDING_COMPLETE_KEY,
+} from '@/app/onboarding';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -91,19 +96,30 @@ function RootLayoutNav() {
     checkAndMigrate();
   }, [session, migrationChecked]);
 
-  // Initialize notifications when user is authenticated
+  // Initialize notifications when user is authenticated.
+  // For new users, onboarding handles permissions and scheduling, so we skip
+  // this step until they have completed onboarding (onboarding_complete is set).
   useEffect(() => {
     const setupNotifications = async () => {
       if (!session || notificationsInitialized) return;
-      
+
       try {
-        await initializeNotifications();
+        const onboardingDone = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        if (!onboardingDone) {
+          // New user — onboarding will handle this
+          return;
+        }
+
+        // Returning user: reschedule at their saved hour (or 8 AM default)
+        const storedHour = await AsyncStorage.getItem(NOTIFICATION_HOUR_KEY);
+        const hour = storedHour ? parseInt(storedHour, 10) : 8;
+        await scheduleDailyCheckinNotification(hour, 0);
         setNotificationsInitialized(true);
       } catch (error) {
         console.error('Failed to initialize notifications:', error);
       }
     };
-    
+
     setupNotifications();
   }, [session, notificationsInitialized]);
 
@@ -126,6 +142,7 @@ function RootLayoutNav() {
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         <Stack.Screen name="checkin" options={{ presentation: 'modal', headerShown: false }} />
