@@ -1,4 +1,4 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Href, Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
 
@@ -152,6 +152,7 @@ function calculateEpisodeStats(checkIns: CheckIn[]): EpisodeStats {
 
 export default function TabOneScreen() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
   const [hasCheckIn, setHasCheckIn] = useState(false);
   const [episodeStats, setEpisodeStats] = useState<EpisodeStats>(DEFAULT_EPISODE_STATS);
@@ -395,18 +396,31 @@ export default function TabOneScreen() {
 
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
 
-        <Link href="/crisis" asChild>
-          <Pressable
-            style={({ pressed }) => [
-              styles.crisisButton,
-              pressed && styles.crisisButtonPressed,
-            ]}
-          >
-            <RNView style={[styles.crisisButtonInner, { backgroundColor: crisisButtonColor }]}>
-              <Text style={styles.crisisButtonText}>Me duele la cabeza</Text>
-            </RNView>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.push('/crisis')}
+          style={({ pressed }) => [
+            styles.crisisButton,
+            pressed && styles.crisisButtonPressed,
+          ]}
+        >
+          <RNView style={[styles.crisisButtonInner, { backgroundColor: crisisButtonColor }]}>
+            <Text style={styles.crisisButtonText}>Me duele la cabeza</Text>
+          </RNView>
+        </Pressable>
+
+        <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
+
+        <Pressable
+          onPress={() => router.push('/report' as Href)}
+          style={({ pressed }) => [
+            styles.reportButton,
+            pressed && styles.reportButtonPressed,
+          ]}
+        >
+          <RNView style={[styles.reportButtonInner, { borderColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)' }]}>
+            <Text style={styles.reportButtonText}>Informe médico</Text>
+          </RNView>
+        </Pressable>
 
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
 
@@ -536,6 +550,26 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  reportButton: {
+    marginBottom: 10,
+  },
+  reportButtonInner: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  reportButtonPressed: {
+    opacity: 0.6,
+  },
+  reportButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   disclaimer: {
     marginTop: 20,

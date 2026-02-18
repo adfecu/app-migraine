@@ -80,7 +80,7 @@ const QUESTION_PATTERNS = {
   sleep: 'Cuántas horas dormiste',
   stress: 'Qué tan estresado',
   alcohol: 'Has consumido alcohol',
-  caffeine: 'consumo de cafeína',
+  caffeine: 'tazas de café',
 };
 
 // Constants

@@ -17,9 +17,14 @@
       "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
+          "remote-notification",
           "remote-notification"
-        ]
-      }
+        ],
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.twooceansinhealth.appmigraine"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +32,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.twooceansinhealth.appmigraine"
     },
     "web": {
       "bundler": "metro",
@@ -43,10 +53,17 @@
           "icon": "./assets/images/icon.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      "expo-speech-recognition"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2ed842a0-48fe-4037-886d-85c16c30b93d"
+      }
     }
   }
 }

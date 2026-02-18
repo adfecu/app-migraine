@@ -230,21 +230,22 @@ const HEADACHE_WEIGHTS = {
  * TL_daily = (W_sleep × InvSleep) + (W_stress × Stress) + (W_alcohol × Alcohol) + (W_caffeine × Caffeine)
  */
 function calculateDailyTensionLoad(answers: Record<string, AnswerValue>): number {
-  // Get values with defaults (middle of scale = 5)
-  const sleepQuality = typeof answers['sleep'] === 'number' ? answers['sleep'] : 5;
+  // Get values with defaults (sleep hours: 0-12, default 6)
+  const sleepHours = typeof answers['sleep'] === 'number' ? answers['sleep'] : 6;
   const stressLevel = typeof answers['stress'] === 'number' ? answers['stress'] : 5;
   const alcoholConsumption = typeof answers['alcohol'] === 'number' ? answers['alcohol'] : 0;
-  const caffeineDeviation = typeof answers['caffeine'] === 'number' ? answers['caffeine'] : 5;
+  const caffeineCups = typeof answers['caffeine'] === 'number' ? answers['caffeine'] : 2;
+  const caffeineForLoad = caffeineCups * 2; // Scale 0-5 to 0-10 equivalent
   
-  // Invert sleep quality (high sleep = low risk)
-  const invSleep = 10 - sleepQuality;
+  // Convert sleep hours (0-12) to risk: more hours = less risk, scaled 0-10
+  const invSleep = 10 * (12 - sleepHours) / 12;
   
   // Calculate tension load
   const tensionLoad = 
     (HEADACHE_WEIGHTS.sleep * invSleep) +
     (HEADACHE_WEIGHTS.stress * stressLevel) +
     (HEADACHE_WEIGHTS.alcohol * alcoholConsumption) +
-    (HEADACHE_WEIGHTS.caffeine * caffeineDeviation);
+    (HEADACHE_WEIGHTS.caffeine * caffeineForLoad);
   
   return tensionLoad;
 }
@@ -280,21 +281,21 @@ function determineRiskZone(cumulativeLoad: number, threshold: number): { zone: H
 export async function evaluateHeadacheRisk(checkIn: CheckIn): Promise<HeadacheRiskEvaluation> {
   const answers = mapAnswersByQuestion(checkIn);
   
-  // Get values with defaults
-  const sleepQuality = typeof answers['sleep'] === 'number' ? answers['sleep'] : 5;
+  // Get values with defaults (sleep hours: 0-12, default 6)
+  const sleepHours = typeof answers['sleep'] === 'number' ? answers['sleep'] : 6;
   const stressLevel = typeof answers['stress'] === 'number' ? answers['stress'] : 5;
   const alcoholConsumption = typeof answers['alcohol'] === 'number' ? answers['alcohol'] : 0;
-  const caffeineDeviation = typeof answers['caffeine'] === 'number' ? answers['caffeine'] : 5;
+  const caffeineCups = typeof answers['caffeine'] === 'number' ? answers['caffeine'] : 2;
   
   // Generate reasons
   const reasonsMet: string[] = [];
   const reasonsNotMet: string[] = [];
   
-  // Sleep: Low sleep quality (< 4) contributes to risk
-  if (sleepQuality < 4) {
-    reasonsMet.push(`Sueño: ${sleepQuality}/10 (poco descanso)`);
+  // Sleep: Fewer than 6 hours contributes to risk
+  if (sleepHours < 6) {
+    reasonsMet.push(`Sueño: ${sleepHours} h (poco descanso)`);
   } else {
-    reasonsNotMet.push(`Sueño: ${sleepQuality}/10 (suficiente)`);
+    reasonsNotMet.push(`Sueño: ${sleepHours} h (suficiente)`);
   }
   
   // Stress: High stress (> 6) contributes to risk
@@ -313,13 +314,13 @@ export async function evaluateHeadacheRisk(checkIn: CheckIn): Promise<HeadacheRi
     reasonsNotMet.push(`Alcohol: ${alcoholConsumption}/10 (consumo habitual)`);
   }
   
-  // Caffeine: Both withdrawal (0) and excess (> 6) contribute to risk
-  if (caffeineDeviation === 0) {
-    reasonsMet.push(`Cafeína: ${caffeineDeviation}/10 (ninguna - abstinencia)`);
-  } else if (caffeineDeviation > 6) {
-    reasonsMet.push(`Cafeína: ${caffeineDeviation}/10 (mucho más de lo habitual)`);
+  // Caffeine: Both withdrawal (0) and excess (4-5 cups) contribute to risk
+  if (caffeineCups === 0) {
+    reasonsMet.push(`Cafeína: ${caffeineCups}/5 (ninguna - abstinencia)`);
+  } else if (caffeineCups >= 4) {
+    reasonsMet.push(`Cafeína: ${caffeineCups}/5 (alto)`);
   } else {
-    reasonsNotMet.push(`Cafeína: ${caffeineDeviation}/10 (consumo habitual)`);
+    reasonsNotMet.push(`Cafeína: ${caffeineCups}/5 (moderado)`);
   }
   
   // Calculate daily tension load

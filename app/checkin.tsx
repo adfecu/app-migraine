@@ -30,6 +30,7 @@ interface Question {
   sliderMin?: number;
   sliderMax?: number;
   sliderLabels?: { range: [number, number]; label: string }[];
+  helperText?: string; // Optional explanatory text shown below the question
 }
 
 export const QUESTIONS: Question[] = [
@@ -158,7 +159,7 @@ export const QUESTIONS: Question[] = [
     type: 'slider',
     conditional: false,
     sliderMin: 0,
-    sliderMax: 10,
+    sliderMax: 12,
   },
   {
     id: 'q_stress',
@@ -176,6 +177,7 @@ export const QUESTIONS: Question[] = [
   {
     id: 'q_alcohol',
     text: '¿Has consumido alcohol?',
+    helperText: 'Piensa en tu consumo normal de cualquier bebida (cerveza, vino, licor).',
     type: 'slider_labeled',
     conditional: false,
     sliderMin: 0,
@@ -188,15 +190,15 @@ export const QUESTIONS: Question[] = [
   },
   {
     id: 'q_caffeine',
-    text: '¿Cómo ha sido tu consumo de cafeína (café, té, refrescos)?',
+    text: '¿Cuántas tazas de café tomaste?',
     type: 'slider_labeled',
     conditional: false,
     sliderMin: 0,
-    sliderMax: 10,
+    sliderMax: 5,
     sliderLabels: [
-      { range: [0, 0], label: 'Nada' },
-      { range: [1, 5], label: 'Mi consumo habitual' },
-      { range: [6, 10], label: 'Mucho más de lo habitual' },
+      { range: [0, 0], label: 'Ninguna' },
+      { range: [1, 3], label: 'Moderado' },
+      { range: [4, 5], label: 'Alto' },
     ],
   },
 ];
@@ -1009,6 +1011,11 @@ export default function CheckinScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.questionText}>{currentQuestion.text}</Text>
+        {currentQuestion.helperText && (
+          <Text style={[styles.helperText, { color: Colors[colorScheme ?? 'light'].text }]}>
+            {currentQuestion.helperText}
+          </Text>
+        )}
         {renderQuestionInput()}
       </ScrollView>
 
@@ -1076,6 +1083,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 40,
+  },
+  helperText: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 10,
   },
   // Yes/No styles
   yesNoContainer: {
