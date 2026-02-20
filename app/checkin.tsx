@@ -1327,7 +1327,7 @@ const styles = StyleSheet.create({
   sliderHint: {
     textAlign: 'center',
     fontSize: 14,
-    opacity: 0.5,
+    opacity: 0.6,
     marginTop: 8,
   },
 });

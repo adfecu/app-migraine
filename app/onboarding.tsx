@@ -46,13 +46,19 @@ function formatHour(h: number) {
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
-function ProgressDots({ current, total }: { current: number; total: number }) {
+function ProgressDots({ current, total, tint, colorScheme }: { current: number; total: number; tint: string; colorScheme: 'light' | 'dark' | null | undefined }) {
+  const inactiveColor = colorScheme === 'dark' ? '#555' : '#999';
   return (
     <View style={dots.row}>
       {Array.from({ length: total }).map((_, i) => (
         <View
           key={i}
-          style={[dots.dot, i === current ? dots.active : dots.inactive]}
+          style={[
+            dots.dot,
+            i === current
+              ? [dots.active, { backgroundColor: tint }]
+              : { backgroundColor: inactiveColor },
+          ]}
         />
       ))}
     </View>
@@ -73,11 +79,7 @@ const dots = StyleSheet.create({
     borderRadius: 4,
   },
   active: {
-    backgroundColor: '#007AFF',
     width: 24,
-  },
-  inactive: {
-    backgroundColor: '#C7C7CC',
   },
 });
 
@@ -222,7 +224,7 @@ export default function OnboardingScreen() {
                   <Text
                     style={[
                       s.chipText,
-                      selectedHour === h && s.chipTextSelected,
+                      selectedHour === h && { color: colorScheme === 'dark' ? '#000' : '#fff', opacity: 1 },
                     ]}
                   >
                     {formatHour(h)}
@@ -290,7 +292,7 @@ export default function OnboardingScreen() {
 
   return (
     <View style={s.screen}>
-      <ProgressDots current={currentStep} total={TOTAL_STEPS} />
+      <ProgressDots current={currentStep} total={TOTAL_STEPS} tint={tint} colorScheme={colorScheme} />
       <Animated.View style={[s.content, { opacity: fadeAnim }]}>
         {renderStep()}
       </Animated.View>
@@ -384,10 +386,6 @@ const s = StyleSheet.create({
     fontWeight: '500',
     opacity: 0.8,
   },
-  chipTextSelected: {
-    color: '#fff',
-    opacity: 1,
-  },
   btn: {
     width: '100%',
     height: 52,
@@ -411,6 +409,6 @@ const s = StyleSheet.create({
   },
   ghostText: {
     fontSize: 15,
-    opacity: 0.55,
+    opacity: 0.65,
   },
 });

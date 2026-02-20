@@ -150,7 +150,7 @@ export default function ReportScreen() {
         </View>
       ) : !data || data.totalCheckIns === 0 ? (
         <View style={styles.centered}>
-          <FontAwesome name="file-text-o" size={48} color={isDark ? '#555' : '#ccc'} />
+          <FontAwesome name="file-text-o" size={48} color={isDark ? '#666' : '#888'} />
           <Text style={styles.emptyTitle}>Sin datos</Text>
           <Text style={styles.emptySubtitle}>
             No hay registros en los últimos {period} días. Haz check-ins diarios para generar tu informe.
@@ -176,13 +176,17 @@ export default function ReportScreen() {
             <RNView
               style={[
                 styles.badge,
-                data.isChronicPattern ? styles.badgeChronic : styles.badgeEpisodic,
+                data.isChronicPattern
+                  ? { backgroundColor: isDark ? 'rgba(198,40,40,0.3)' : '#FFEBEE' }
+                  : { backgroundColor: isDark ? 'rgba(46,125,50,0.3)' : '#E8F5E9' },
               ]}
             >
               <Text
                 style={[
                   styles.badgeText,
-                  { color: data.isChronicPattern ? '#C62828' : '#2E7D32' },
+                  { color: data.isChronicPattern
+                      ? (isDark ? '#ef9a9a' : '#C62828')
+                      : (isDark ? '#a5d6a7' : '#2E7D32') },
                 ]}
               >
                 {data.isChronicPattern
@@ -261,23 +265,23 @@ export default function ReportScreen() {
             />
           </RNView>
           <RNView style={styles.intensityRow}>
-            <RNView style={[styles.intensityCard, styles.intensityMild]}>
-              <Text style={[styles.intensityValue, { color: '#2E7D32' }]}>
+            <RNView style={[styles.intensityCard, { backgroundColor: isDark ? 'rgba(46,125,50,0.2)' : '#E8F5E9' }]}>
+              <Text style={[styles.intensityValue, { color: isDark ? '#66BB6A' : '#2E7D32' }]}>
                 {data.intensityDistribution.mild}
               </Text>
-              <Text style={[styles.intensityLabel, { color: '#2E7D32' }]}>Leve</Text>
+              <Text style={[styles.intensityLabel, { color: isDark ? '#66BB6A' : '#2E7D32' }]}>Leve</Text>
             </RNView>
-            <RNView style={[styles.intensityCard, styles.intensityModerate]}>
-              <Text style={[styles.intensityValue, { color: '#F57F17' }]}>
+            <RNView style={[styles.intensityCard, { backgroundColor: isDark ? 'rgba(245,127,23,0.2)' : '#FFF8E1' }]}>
+              <Text style={[styles.intensityValue, { color: isDark ? '#FFA726' : '#F57F17' }]}>
                 {data.intensityDistribution.moderate}
               </Text>
-              <Text style={[styles.intensityLabel, { color: '#F57F17' }]}>Moderado</Text>
+              <Text style={[styles.intensityLabel, { color: isDark ? '#FFA726' : '#F57F17' }]}>Moderado</Text>
             </RNView>
-            <RNView style={[styles.intensityCard, styles.intensitySevere]}>
-              <Text style={[styles.intensityValue, { color: '#C62828' }]}>
+            <RNView style={[styles.intensityCard, { backgroundColor: isDark ? 'rgba(198,40,40,0.2)' : '#FFEBEE' }]}>
+              <Text style={[styles.intensityValue, { color: isDark ? '#EF5350' : '#C62828' }]}>
                 {data.intensityDistribution.severe}
               </Text>
-              <Text style={[styles.intensityLabel, { color: '#C62828' }]}>Severo</Text>
+              <Text style={[styles.intensityLabel, { color: isDark ? '#EF5350' : '#C62828' }]}>Severo</Text>
             </RNView>
           </RNView>
           <RNView style={styles.statsGrid}>
@@ -345,8 +349,11 @@ export default function ReportScreen() {
             </Text>
           </Card>
           {data.medicationOveruseWarning && (
-            <RNView style={styles.warningCard}>
-              <Text style={styles.warningText}>
+            <RNView style={[
+              styles.warningCard,
+              { backgroundColor: isDark ? 'rgba(255,152,0,0.15)' : '#FFF3E0' },
+            ]}>
+              <Text style={[styles.warningText, { color: isDark ? '#ffb74d' : '#5D4037' }]}>
                 <Text style={{ fontWeight: '700' }}>Atención: </Text>El uso de analgésicos supera
                 los 10 días/mes en promedio. Esto puede contribuir a cefalea por uso excesivo de
                 medicación (MOH).
@@ -449,7 +456,7 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16, opacity: 0.6 },
   emptySubtitle: {
     fontSize: 14,
-    opacity: 0.4,
+    opacity: 0.55,
     textAlign: 'center',
     marginTop: 8,
     maxWidth: 260,
@@ -479,8 +486,6 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, opacity: 0.6, textAlign: 'center', marginTop: 2 },
   badgeRow: { alignItems: 'center', marginTop: 4, marginBottom: 8 },
   badge: { paddingVertical: 4, paddingHorizontal: 14, borderRadius: 12 },
-  badgeChronic: { backgroundColor: '#FFEBEE' },
-  badgeEpisodic: { backgroundColor: '#E8F5E9' },
   badgeText: { fontSize: 12, fontWeight: '600' },
   card: {
     borderWidth: 1,
@@ -513,9 +518,6 @@ const styles = StyleSheet.create({
   barValue: { width: 65, fontSize: 11, opacity: 0.6, textAlign: 'right' },
   intensityRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   intensityCard: { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center' },
-  intensityMild: { backgroundColor: '#E8F5E9' },
-  intensityModerate: { backgroundColor: '#FFF8E1' },
-  intensitySevere: { backgroundColor: '#FFEBEE' },
   intensityValue: { fontSize: 22, fontWeight: '700' },
   intensityLabel: { fontSize: 11, marginTop: 2 },
   warningCard: {
@@ -526,7 +528,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 8,
   },
-  warningText: { fontSize: 13, color: '#5D4037' },
+  warningText: { fontSize: 13 },
   episodeDate: { fontSize: 14, fontWeight: '700', marginBottom: 6 },
   episodeRow: {
     flexDirection: 'row',
@@ -535,11 +537,11 @@ const styles = StyleSheet.create({
   },
   episodeField: { fontSize: 12, opacity: 0.6 },
   episodeValue: { fontSize: 12, fontWeight: '500' },
-  noData: { fontSize: 13, opacity: 0.4, fontStyle: 'italic' },
+  noData: { fontSize: 13, opacity: 0.55, fontStyle: 'italic' },
   disclaimer: {
     marginTop: 24,
     fontSize: 11,
-    opacity: 0.4,
+    opacity: 0.55,
     textAlign: 'center',
     lineHeight: 16,
     paddingHorizontal: 12,

@@ -144,7 +144,7 @@ function RootLayoutNav() {
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
         <Stack.Screen name="checkin" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="crisis" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="report" options={{ presentation: 'modal', headerShown: false }} />

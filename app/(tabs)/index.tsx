@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   disclaimer: {
     marginTop: 20,
     fontSize: 11,
-    opacity: 0.5,
+    opacity: 0.6,
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 16,

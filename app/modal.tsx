@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Alert, ActivityIndicator, Platform, Pressable, StyleSheet } from 'react-native';
 
-import EditScreenInfo from '@/components/EditScreenInfo';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -50,12 +49,6 @@ export default function ModalScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/modal.tsx" />
-
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-
       <Pressable
         style={({ pressed }) => [
           styles.logoutButton,
@@ -64,15 +57,24 @@ export default function ModalScreen() {
         ]}
         onPress={handleLogout}
       >
-        <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
+        <Text style={[styles.logoutButtonText, { color: colorScheme === 'dark' ? '#000' : '#fff' }]}>
+          Cerrar sesión
+        </Text>
       </Pressable>
 
       <View style={styles.debugSection}>
         <Pressable
-          style={({ pressed }) => [styles.debugButton, pressed && styles.debugButtonPressed]}
+          style={({ pressed }) => [
+            styles.debugButton,
+            { borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.3)' : '#C7C7CC' },
+            pressed && styles.debugButtonPressed,
+          ]}
           onPress={handleDebugOnboarding}
         >
-          <Text style={styles.debugButtonText}>Debug: Ver Onboarding</Text>
+          <Text style={[
+            styles.debugButtonText,
+            { color: Colors[colorScheme ?? 'light'].text, opacity: 0.75 },
+          ]}>Debug: Ver Onboarding</Text>
         </Pressable>
       </View>
 
@@ -106,15 +108,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
-  },
   logoutButton: {
     paddingVertical: 14,
     paddingHorizontal: 40,
@@ -126,7 +119,6 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
   },
   debugSection: {
     marginTop: 20,
@@ -137,7 +129,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#C7C7CC',
     borderStyle: 'dashed',
   },
   debugButtonPressed: {
@@ -146,7 +137,6 @@ const styles = StyleSheet.create({
   debugButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    opacity: 0.6,
   },
   deleteSection: {
     marginTop: 20,

@@ -47,8 +47,14 @@ export default function LoginScreen() {
       <Text style={styles.subtitle}>Bienvenido de nuevo</Text>
 
       {error ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+        <View style={[
+          styles.errorContainer,
+          { backgroundColor: colorScheme === 'dark' ? 'rgba(198,40,40,0.25)' : '#ffebee' },
+        ]}>
+          <Text style={[
+            styles.errorText,
+            { color: colorScheme === 'dark' ? '#ff8a80' : '#c62828' },
+          ]}>{error}</Text>
         </View>
       ) : null}
 
@@ -129,13 +135,11 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   errorContainer: {
-    backgroundColor: '#ffebee',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
   },
   errorText: {
-    color: '#c62828',
     textAlign: 'center',
   },
   input: {
