@@ -40,6 +40,9 @@ interface CheckInRow {
 interface UserSettingsRow {
   user_id: string;
   headache_threshold: number;
+  name?: string;
+  sex?: 'male' | 'female';
+  age?: number;
   created_at: string;
   updated_at: string;
 }
@@ -347,6 +350,32 @@ export async function saveUserThreshold(threshold: number): Promise<void> {
     }
   } catch (error) {
     console.error('Error saving user threshold:', error);
+  }
+}
+
+/**
+ * Saves the user's profile (name, sex, age) to user_settings (upsert)
+ */
+export async function saveUserProfile(name: string, sex: 'male' | 'female', age: number): Promise<void> {
+  try {
+    const userId = await getCurrentUserId();
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({
+        user_id: userId,
+        name,
+        sex,
+        age,
+      }, {
+        onConflict: 'user_id',
+      });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving user profile:', error);
   }
 }
 

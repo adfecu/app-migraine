@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
 } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
@@ -15,6 +16,7 @@ import {
   requestNotificationPermissions,
   scheduleDailyCheckinNotification,
 } from '@/utils/notifications';
+import { saveUserProfile } from '@/utils/supabaseStorage';
 import { requestVoicePermissions } from '@/utils/voiceCrisis';
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -26,15 +28,16 @@ const PRESET_HOURS = [7, 8, 9, 10, 12, 18, 20];
 
 // Step indices
 const STEP_WELCOME = 0;
-const STEP_SLIDE_CHECKINS = 1;
-const STEP_SLIDE_RIESGO = 2;
-const STEP_SLIDE_CRISIS = 3;
-const STEP_NOTIF_TIME = 4;
-const STEP_PERM_NOTIF = 5;
-const STEP_PERM_MIC = 6;
-const STEP_FIRST_CHECKIN = 7;
+const STEP_PROFILE = 1;
+const STEP_SLIDE_CHECKINS = 2;
+const STEP_SLIDE_RIESGO = 3;
+const STEP_SLIDE_CRISIS = 4;
+const STEP_NOTIF_TIME = 5;
+const STEP_PERM_NOTIF = 6;
+const STEP_PERM_MIC = 7;
+const STEP_FIRST_CHECKIN = 8;
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +97,12 @@ export default function OnboardingScreen() {
   const [selectedHour, setSelectedHour] = useState(8);
   const [notifGranted, setNotifGranted] = useState(false);
 
+  // Profile step state
+  const [profileName, setProfileName] = useState('');
+  const [profileSex, setProfileSex] = useState<'male' | 'female' | null>(null);
+  const [profileAge, setProfileAge] = useState('');
+  const [profileError, setProfileError] = useState('');
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const goToStep = (next: number) => {
@@ -106,8 +115,27 @@ export default function OnboardingScreen() {
 
   const next = () => goToStep(currentStep + 1);
 
+  const handleProfileNext = () => {
+    setProfileError('');
+    if (!profileName.trim()) {
+      setProfileError('Por favor ingresa tu nombre');
+      return;
+    }
+    if (!profileSex) {
+      setProfileError('Por favor selecciona tu sexo');
+      return;
+    }
+    const ageNum = parseInt(profileAge, 10);
+    if (!profileAge || isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      setProfileError('Por favor ingresa una edad válida (1–120)');
+      return;
+    }
+    next();
+  };
+
   // Called from both "Sí" and "Más tarde" on the final step
   const finish = async (openCheckin: boolean) => {
+    await saveUserProfile(profileName.trim(), profileSex!, parseInt(profileAge, 10));
     await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
     await AsyncStorage.setItem(NOTIFICATION_HOUR_KEY, String(selectedHour));
 
@@ -153,7 +181,74 @@ export default function OnboardingScreen() {
           </SlideShell>
         );
 
-      // ── Step 1: Check-ins ────────────────────────────────────────────────────
+      // ── Step 1: Profile ──────────────────────────────────────────────────────
+      case STEP_PROFILE:
+        return (
+          <SlideShell>
+            <Text style={s.icon}>👤</Text>
+            <Text style={s.title}>Cuéntanos sobre ti</Text>
+            <TextInput
+              style={[
+                s.input,
+                {
+                  backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5',
+                  color: colorScheme === 'dark' ? '#fff' : '#000',
+                },
+              ]}
+              placeholder="Nombre"
+              placeholderTextColor={colorScheme === 'dark' ? '#888' : '#999'}
+              autoCapitalize="words"
+              value={profileName}
+              onChangeText={setProfileName}
+            />
+            <Text style={s.fieldLabel}>Sexo</Text>
+            <View style={s.chipRow}>
+              {(['male', 'female'] as const).map((val) => (
+                <Pressable
+                  key={val}
+                  style={[
+                    s.chip,
+                    profileSex === val && { backgroundColor: tint },
+                  ]}
+                  onPress={() => setProfileSex(val)}
+                >
+                  <Text
+                    style={[
+                      s.chipText,
+                      profileSex === val && {
+                        color: colorScheme === 'dark' ? '#000' : '#fff',
+                        opacity: 1,
+                      },
+                    ]}
+                  >
+                    {val === 'male' ? 'Hombre' : 'Mujer'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              style={[
+                s.input,
+                {
+                  backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5',
+                  color: colorScheme === 'dark' ? '#fff' : '#000',
+                },
+              ]}
+              placeholder="Edad"
+              placeholderTextColor={colorScheme === 'dark' ? '#888' : '#999'}
+              keyboardType="number-pad"
+              value={profileAge}
+              onChangeText={setProfileAge}
+              maxLength={3}
+            />
+            {profileError ? (
+              <Text style={s.errorText}>{profileError}</Text>
+            ) : null}
+            <PrimaryButton label="Continuar" onPress={handleProfileNext} tint={tint} />
+          </SlideShell>
+        );
+
+      // ── Step 2: Check-ins ────────────────────────────────────────────────────
       case STEP_SLIDE_CHECKINS:
         return (
           <SlideShell>
@@ -167,7 +262,7 @@ export default function OnboardingScreen() {
           </SlideShell>
         );
 
-      // ── Step 2: Riesgo & CL ──────────────────────────────────────────────────
+      // ── Step 3: Riesgo & CL ──────────────────────────────────────────────────
       case STEP_SLIDE_RIESGO:
         return (
           <SlideShell>
@@ -367,6 +462,26 @@ const s = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 40,
+  },
+  input: {
+    width: '100%',
+    height: 52,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    alignSelf: 'flex-start',
+    fontSize: 14,
+    opacity: 0.65,
+    marginBottom: 8,
+  },
+  errorText: {
+    color: '#c62828',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   chipRow: {
     flexDirection: 'row',
