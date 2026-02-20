@@ -1,5 +1,5 @@
 const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+const tintColorDark = '#2f95dc'; // Use same accent as light - white was invisible on button with white text
 
 export default {
   light: {

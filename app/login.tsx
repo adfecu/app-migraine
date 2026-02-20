@@ -102,6 +102,16 @@ export default function LoginScreen() {
         )}
       </Pressable>
 
+      <View style={[styles.linkContainer, { marginTop: 16 }]}>
+        <Link href="/forgot-password" asChild>
+          <Pressable>
+            <Text style={[styles.link, { color: Colors[colorScheme ?? 'light'].tint }]}>
+              ¿Olvidaste tu contraseña?
+            </Text>
+          </Pressable>
+        </Link>
+      </View>
+
       <View style={styles.linkContainer}>
         <Text style={styles.linkText}>¿No tienes cuenta? </Text>
         <Link href="/signup" asChild>
