@@ -156,10 +156,16 @@ export const QUESTIONS: Question[] = [
   {
     id: 'q_sleep',
     text: '¿Cuántas horas dormiste anoche?',
-    type: 'slider',
+    type: 'slider_labeled',
     conditional: false,
     sliderMin: 0,
     sliderMax: 12,
+    sliderLabels: [
+      { range: [0, 3], label: 'Muy poco' },
+      { range: [4, 6], label: 'Poco' },
+      { range: [7, 9], label: 'Normal' },
+      { range: [10, 12], label: 'Mucho' },
+    ],
   },
   {
     id: 'q_stress',

@@ -49,122 +49,19 @@ const DEFAULT_EVALUATION: MigraineEvaluation = {
   reasons: { met: [], notMet: [] },
 };
 
-// Episode statistics interface
-interface EpisodeStats {
-  episodesThisMonth: number;
-  daysSinceLastEpisode: number | null;
-  comparisonWithLastMonth: number | null; // positive = more, negative = less, null = no data
-  averageTimeBetweenCrises: number | null; // null if less than 2 episodes
-}
-
-const DEFAULT_EPISODE_STATS: EpisodeStats = {
-  episodesThisMonth: 0,
-  daysSinceLastEpisode: null,
-  comparisonWithLastMonth: null,
-  averageTimeBetweenCrises: null,
-};
-
-// Helper functions for episode statistics
-function getCrisisEpisodes(checkIns: CheckIn[]): CheckIn[] {
-  return checkIns.filter(entry => entry.type === 'crisis');
-}
-
-function getEpisodesInMonth(episodes: CheckIn[], year: number, month: number): CheckIn[] {
-  return episodes.filter(episode => {
-    const date = new Date(episode.date);
-    return date.getFullYear() === year && date.getMonth() === month;
-  });
-}
-
-function calculateDaysSince(dateString: string): number {
-  const episodeDate = new Date(dateString);
-  const today = new Date();
-  // Reset time to compare dates only
-  episodeDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const diffTime = today.getTime() - episodeDate.getTime();
-  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
-}
-
-function calculateAverageTimeBetweenCrises(episodes: CheckIn[]): number | null {
-  if (episodes.length < 2) return null;
-  
-  // Sort episodes by date (oldest first)
-  const sortedEpisodes = [...episodes].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-  
-  // Calculate intervals between consecutive episodes
-  let totalDays = 0;
-  for (let i = 1; i < sortedEpisodes.length; i++) {
-    const prevDate = new Date(sortedEpisodes[i - 1].date);
-    const currDate = new Date(sortedEpisodes[i].date);
-    prevDate.setHours(0, 0, 0, 0);
-    currDate.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-    totalDays += diffDays;
-  }
-  
-  return Math.round(totalDays / (sortedEpisodes.length - 1));
-}
-
-function calculateEpisodeStats(checkIns: CheckIn[]): EpisodeStats {
-  const crisisEpisodes = getCrisisEpisodes(checkIns);
-  
-  if (crisisEpisodes.length === 0) {
-    return DEFAULT_EPISODE_STATS;
-  }
-  
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-  
-  // Episodes this month
-  const episodesThisMonth = getEpisodesInMonth(crisisEpisodes, currentYear, currentMonth).length;
-  
-  // Find most recent episode
-  const sortedByDate = [...crisisEpisodes].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-  const lastEpisode = sortedByDate[0];
-  const daysSinceLastEpisode = calculateDaysSince(lastEpisode.date);
-  
-  // Episodes last month
-  let lastMonthYear = currentYear;
-  let lastMonth = currentMonth - 1;
-  if (lastMonth < 0) {
-    lastMonth = 11;
-    lastMonthYear = currentYear - 1;
-  }
-  const episodesLastMonth = getEpisodesInMonth(crisisEpisodes, lastMonthYear, lastMonth).length;
-  const comparisonWithLastMonth = episodesThisMonth - episodesLastMonth;
-  
-  // Average time between crises
-  const averageTimeBetweenCrises = calculateAverageTimeBetweenCrises(crisisEpisodes);
-  
-  return {
-    episodesThisMonth,
-    daysSinceLastEpisode,
-    comparisonWithLastMonth,
-    averageTimeBetweenCrises,
-  };
-}
 
 export default function TabOneScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
   const [hasCheckIn, setHasCheckIn] = useState(false);
-  const [episodeStats, setEpisodeStats] = useState<EpisodeStats>(DEFAULT_EPISODE_STATS);
   const [headacheRisk, setHeadacheRisk] = useState<HeadacheRiskEvaluation | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       const loadData = async () => {
-        // Load all check-ins for episode statistics and headache resolution check
+        // Load all check-ins for headache resolution check
         const allCheckIns = await getAllCheckIns();
-        const stats = calculateEpisodeStats(allCheckIns);
-        setEpisodeStats(stats);
         
         // Check if headache has resolved and reset CL if needed
         await checkAndResetCLIfHeadacheResolved(allCheckIns);
@@ -253,131 +150,57 @@ export default function TabOneScreen() {
             
             <View style={styles.headacheRiskContainer}>
               <Text style={styles.headacheRiskTitle}>Riesgo de Dolor de Cabeza</Text>
-              
-              {/* Progress Bar */}
-              <View style={styles.progressBarContainer}>
-                <View style={styles.progressBarBackground}>
-                  <View 
-                    style={[
-                      styles.progressBarFill,
-                      { 
-                        width: `${Math.min(100, headacheRisk.percentage)}%`,
-                        backgroundColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone],
-                      }
-                    ]} 
-                  />
+
+              {/* Score Circle */}
+              <View style={styles.scoreContainer}>
+                <View style={[
+                  styles.scoreCircle,
+                  { borderColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }
+                ]}>
+                  <Text style={[styles.scoreValue, { color: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }]}>
+                    {Math.round(headacheRisk.percentage)}
+                  </Text>
+                  <Text style={styles.scoreMax}>%</Text>
                 </View>
-                <Text style={styles.progressBarText}>
-                  {Math.round(headacheRisk.percentage)}%
-                </Text>
-              </View>
-              
-              {/* Risk Zone Pill */}
-              <View style={[
-                styles.headacheZonePill,
-                { backgroundColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }
-              ]}>
-                <Text style={styles.headacheZoneText}>
-                  {headacheRisk.riskZone === 'safe' 
-                    ? 'Zona Segura' 
-                    : headacheRisk.riskZone === 'caution' 
-                      ? 'Zona de Precaución' 
-                      : 'Zona de Peligro'}
-                </Text>
-              </View>
-              
-              {/* Prediction Message */}
-              <Text style={styles.predictionText}>
-                {headacheRisk.prediction}
-              </Text>
-              
-              {/* Reasons */}
-              <View style={styles.reasonsContainer}>
-                {headacheRisk.reasons.met.map((reason, index) => (
-                  <View key={`met-${index}`} style={styles.reasonRow}>
-                    <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.danger }]}>✗</Text>
-                    <Text style={styles.reasonText}>{reason}</Text>
-                  </View>
-                ))}
-                {headacheRisk.reasons.notMet.map((reason, index) => (
-                  <View key={`notmet-${index}`} style={styles.reasonRow}>
-                    <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.safe }]}>✗</Text>
-                    <Text style={styles.reasonText}>{reason}</Text>
-                  </View>
-                ))}
-              </View>
-              
-              {/* CL / Threshold Details */}
-              <View style={styles.clDetailsContainer}>
-                <View style={styles.clDetailItem}>
-                  <Text style={styles.clDetailValue}>{headacheRisk.cumulativeLoad.toFixed(1)}</Text>
-                  <Text style={styles.clDetailLabel}>Carga{'\n'}Acumulada</Text>
+
+                {/* Status Pill */}
+                <View style={[
+                  styles.statusPill,
+                  { backgroundColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }
+                ]}>
+                  <Text style={styles.statusText}>
+                    {headacheRisk.riskZone === 'safe'
+                      ? 'Zona Segura'
+                      : headacheRisk.riskZone === 'caution'
+                        ? 'Zona de Precaución'
+                        : 'Zona de Peligro'}
+                  </Text>
                 </View>
-                <Text style={styles.clDetailDivider}>/</Text>
-                <View style={styles.clDetailItem}>
-                  <Text style={styles.clDetailValue}>{headacheRisk.threshold.toFixed(1)}</Text>
-                  <Text style={styles.clDetailLabel}>Umbral{'\n'}Personal</Text>
+
+                {/* Prediction Message */}
+                <Text style={styles.headachePredictionText}>
+                  {headacheRisk.prediction}
+                </Text>
+
+                {/* Reasons */}
+                <View style={styles.reasonsContainer}>
+                  {headacheRisk.reasons.met.map((reason, index) => (
+                    <View key={`met-${index}`} style={styles.reasonRow}>
+                      <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.danger }]}>✓</Text>
+                      <Text style={styles.reasonText}>{reason}</Text>
+                    </View>
+                  ))}
+                  {headacheRisk.reasons.notMet.map((reason, index) => (
+                    <View key={`notmet-${index}`} style={styles.reasonRow}>
+                      <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.safe }]}>✗</Text>
+                      <Text style={styles.reasonText}>{reason}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             </View>
           </>
         )}
-        
-        <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-        
-        {/* Episode Summary */}
-        <View style={styles.episodeSummaryContainer}>
-          <Text style={styles.episodeSummaryTitle}>Resumen de Episodios</Text>
-          
-          <View style={styles.statsGrid}>
-            {/* Episodes this month */}
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{episodeStats.episodesThisMonth}</Text>
-              <Text style={styles.statLabel}>Este mes</Text>
-            </View>
-            
-            {/* Days since last episode */}
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>
-                {episodeStats.daysSinceLastEpisode !== null 
-                  ? episodeStats.daysSinceLastEpisode 
-                  : '-'}
-              </Text>
-              <Text style={styles.statLabel}>Días desde{'\n'}último episodio</Text>
-            </View>
-            
-            {/* Comparison with last month */}
-            <View style={styles.statCard}>
-              <Text style={[
-                styles.statValue,
-                episodeStats.comparisonWithLastMonth !== null && episodeStats.comparisonWithLastMonth > 0 
-                  ? { color: RISK_COLORS.high }
-                  : episodeStats.comparisonWithLastMonth !== null && episodeStats.comparisonWithLastMonth < 0
-                    ? { color: RISK_COLORS.low }
-                    : {}
-              ]}>
-                {episodeStats.comparisonWithLastMonth !== null 
-                  ? (episodeStats.comparisonWithLastMonth > 0 
-                      ? `+${episodeStats.comparisonWithLastMonth}` 
-                      : episodeStats.comparisonWithLastMonth === 0 
-                        ? 'Igual' 
-                        : episodeStats.comparisonWithLastMonth)
-                  : '-'}
-              </Text>
-              <Text style={styles.statLabel}>vs. mes{'\n'}anterior</Text>
-            </View>
-            
-            {/* Average time between crises */}
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>
-                {episodeStats.averageTimeBetweenCrises !== null 
-                  ? episodeStats.averageTimeBetweenCrises 
-                  : '-'}
-              </Text>
-              <Text style={styles.statLabel}>Días promedio{'\n'}entre crisis</Text>
-            </View>
-          </View>
-        </View>
         
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
         
@@ -579,44 +402,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 16,
   },
-  episodeSummaryContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  episodeSummaryTitle: {
-    fontSize: 16,
-    opacity: 0.7,
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-    width: '100%',
-    maxWidth: 320,
-  },
-  statCard: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.3)',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    minWidth: 140,
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  statLabel: {
-    fontSize: 12,
-    opacity: 0.6,
-    textAlign: 'center',
-    marginTop: 4,
-  },
   // Headache Risk Styles
   headacheRiskContainer: {
     width: '100%',
@@ -629,41 +414,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  progressBarContainer: {
-    width: '100%',
-    maxWidth: 280,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  progressBarBackground: {
-    width: '100%',
-    height: 12,
-    backgroundColor: 'rgba(128, 128, 128, 0.2)',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  progressBarText: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: '600',
-    opacity: 0.8,
-  },
-  headacheZonePill: {
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-  },
-  headacheZoneText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  predictionText: {
+  headachePredictionText: {
     marginTop: 16,
     fontSize: 13,
     opacity: 0.8,
@@ -671,31 +422,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 18,
     maxWidth: 300,
-  },
-  clDetailsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    backgroundColor: 'transparent',
-  },
-  clDetailItem: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingHorizontal: 12,
-  },
-  clDetailValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  clDetailLabel: {
-    fontSize: 11,
-    opacity: 0.6,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  clDetailDivider: {
-    fontSize: 24,
-    opacity: 0.4,
-    fontWeight: '300',
   },
 });

@@ -9,6 +9,93 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { AnswerValue, CheckIn, deleteCheckIn, getAllCheckIns } from '@/utils/storage';
 
+// Risk level colors for episode comparison
+const RISK_COLORS = {
+  low: '#4CAF50',
+  high: '#F44336',
+};
+
+// Episode statistics interface
+interface EpisodeStats {
+  episodesThisMonth: number;
+  daysSinceLastEpisode: number | null;
+  comparisonWithLastMonth: number | null;
+  averageTimeBetweenCrises: number | null;
+}
+
+const DEFAULT_EPISODE_STATS: EpisodeStats = {
+  episodesThisMonth: 0,
+  daysSinceLastEpisode: null,
+  comparisonWithLastMonth: null,
+  averageTimeBetweenCrises: null,
+};
+
+function getCrisisEpisodes(checkIns: CheckIn[]): CheckIn[] {
+  return checkIns.filter(entry => entry.type === 'crisis');
+}
+
+function getEpisodesInMonth(episodes: CheckIn[], year: number, month: number): CheckIn[] {
+  return episodes.filter(episode => {
+    const date = new Date(episode.date);
+    return date.getFullYear() === year && date.getMonth() === month;
+  });
+}
+
+function calculateDaysSince(dateString: string): number {
+  const episodeDate = new Date(dateString);
+  const today = new Date();
+  episodeDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const diffTime = today.getTime() - episodeDate.getTime();
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+}
+
+function calculateAverageTimeBetweenCrises(episodes: CheckIn[]): number | null {
+  if (episodes.length < 2) return null;
+  const sortedEpisodes = [...episodes].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  let totalDays = 0;
+  for (let i = 1; i < sortedEpisodes.length; i++) {
+    const prevDate = new Date(sortedEpisodes[i - 1].date);
+    const currDate = new Date(sortedEpisodes[i].date);
+    prevDate.setHours(0, 0, 0, 0);
+    currDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+    totalDays += diffDays;
+  }
+  return Math.round(totalDays / (sortedEpisodes.length - 1));
+}
+
+function calculateEpisodeStats(checkIns: CheckIn[]): EpisodeStats {
+  const crisisEpisodes = getCrisisEpisodes(checkIns);
+  if (crisisEpisodes.length === 0) return DEFAULT_EPISODE_STATS;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const episodesThisMonth = getEpisodesInMonth(crisisEpisodes, currentYear, currentMonth).length;
+
+  const sortedByDate = [...crisisEpisodes].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  const daysSinceLastEpisode = calculateDaysSince(sortedByDate[0].date);
+
+  let lastMonthYear = currentYear;
+  let lastMonth = currentMonth - 1;
+  if (lastMonth < 0) {
+    lastMonth = 11;
+    lastMonthYear = currentYear - 1;
+  }
+  const episodesLastMonth = getEpisodesInMonth(crisisEpisodes, lastMonthYear, lastMonth).length;
+  const comparisonWithLastMonth = episodesThisMonth - episodesLastMonth;
+
+  const averageTimeBetweenCrises = calculateAverageTimeBetweenCrises(crisisEpisodes);
+
+  return { episodesThisMonth, daysSinceLastEpisode, comparisonWithLastMonth, averageTimeBetweenCrises };
+}
+
 // Configure Spanish locale
 LocaleConfig.locales['es'] = {
   monthNames: [
@@ -255,13 +342,16 @@ export default function DiarioScreen() {
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [episodeStats, setEpisodeStats] = useState<EpisodeStats>(DEFAULT_EPISODE_STATS);
 
   useFocusEffect(
     useCallback(() => {
       const loadCheckIns = async () => {
         const data = await getAllCheckIns();
+        const stats = calculateEpisodeStats(data);
+        setEpisodeStats(stats);
         // Show newest first
-        setCheckIns(data.reverse());
+        setCheckIns([...data].reverse());
       };
       loadCheckIns();
     }, [])
@@ -427,6 +517,48 @@ export default function DiarioScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* Episode Summary */}
+        <View style={styles.episodeSummaryContainer}>
+          <Text style={styles.episodeSummaryTitle}>Resumen de Episodios</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{episodeStats.episodesThisMonth}</Text>
+              <Text style={styles.statLabel}>Este mes</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>
+                {episodeStats.daysSinceLastEpisode !== null ? episodeStats.daysSinceLastEpisode : '-'}
+              </Text>
+              <Text style={styles.statLabel}>Días desde{'\n'}último episodio</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={[
+                styles.statValue,
+                episodeStats.comparisonWithLastMonth !== null && episodeStats.comparisonWithLastMonth > 0
+                  ? { color: RISK_COLORS.high }
+                  : episodeStats.comparisonWithLastMonth !== null && episodeStats.comparisonWithLastMonth < 0
+                    ? { color: RISK_COLORS.low }
+                    : {}
+              ]}>
+                {episodeStats.comparisonWithLastMonth !== null
+                  ? (episodeStats.comparisonWithLastMonth > 0
+                      ? `+${episodeStats.comparisonWithLastMonth}`
+                      : episodeStats.comparisonWithLastMonth === 0
+                        ? 'Igual'
+                        : episodeStats.comparisonWithLastMonth)
+                  : '-'}
+              </Text>
+              <Text style={styles.statLabel}>vs. mes{'\n'}anterior</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>
+                {episodeStats.averageTimeBetweenCrises !== null ? episodeStats.averageTimeBetweenCrises : '-'}
+              </Text>
+              <Text style={styles.statLabel}>Días promedio{'\n'}entre crisis</Text>
+            </View>
+          </View>
+        </View>
+
         {/* Calendar Section */}
         <View style={styles.calendarContainer}>
           <Calendar
@@ -492,6 +624,47 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
+  },
+  episodeSummaryContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
+  },
+  episodeSummaryTitle: {
+    fontSize: 16,
+    opacity: 0.7,
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    width: '100%',
+    maxWidth: 320,
+  },
+  statCard: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(128, 128, 128, 0.3)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    minWidth: 140,
+    flex: 1,
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  statLabel: {
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: 'center',
+    marginTop: 4,
   },
   calendarContainer: {
     paddingHorizontal: 8,
