@@ -1,6 +1,6 @@
 import { Href, Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
+import { Modal, Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -56,6 +56,7 @@ export default function TabOneScreen() {
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
   const [hasCheckIn, setHasCheckIn] = useState(false);
   const [headacheRisk, setHeadacheRisk] = useState<HeadacheRiskEvaluation | null>(null);
+  const [showCrisisModal, setShowCrisisModal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -220,7 +221,7 @@ export default function TabOneScreen() {
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
 
         <Pressable
-          onPress={() => router.push('/crisis')}
+          onPress={() => setShowCrisisModal(true)}
           style={({ pressed }) => [
             styles.crisisButton,
             pressed && styles.crisisButtonPressed,
@@ -230,6 +231,62 @@ export default function TabOneScreen() {
             <Text style={styles.crisisButtonText}>Me duele la cabeza</Text>
           </RNView>
         </Pressable>
+
+        {/* Crisis mode picker modal */}
+        <Modal
+          visible={showCrisisModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCrisisModal(false)}
+        >
+          <Pressable
+            style={styles.crisisModalOverlay}
+            onPress={() => setShowCrisisModal(false)}
+          >
+            <RNView style={styles.crisisModalContent}>
+              <Text style={styles.crisisModalTitle}>¿Cómo quieres registrar?</Text>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.crisisModalOption,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => {
+                  setShowCrisisModal(false);
+                  router.push('/crisis');
+                }}
+              >
+                <Text style={styles.crisisModalOptionText}>Modo Visual</Text>
+                <Text style={styles.crisisModalOptionHint}>Formulario en pantalla</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.crisisModalOption,
+                  styles.crisisModalOptionVoice,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => {
+                  setShowCrisisModal(false);
+                  router.push('/crisis-voice');
+                }}
+              >
+                <Text style={styles.crisisModalOptionText}>Modo Voz</Text>
+                <Text style={styles.crisisModalOptionHint}>Solo audio, sin mirar pantalla</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.crisisModalCancel,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => setShowCrisisModal(false)}
+              >
+                <Text style={styles.crisisModalCancelText}>Cancelar</Text>
+              </Pressable>
+            </RNView>
+          </Pressable>
+        </Modal>
 
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
 
@@ -422,5 +479,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 18,
     maxWidth: 300,
+  },
+  // Crisis mode picker modal styles
+  crisisModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  crisisModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  crisisModalTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  crisisModalOption: {
+    width: '100%',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  crisisModalOptionVoice: {
+    borderColor: '#e74c3c',
+    borderWidth: 1.5,
+  },
+  crisisModalOptionText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  crisisModalOptionHint: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  crisisModalCancel: {
+    marginTop: 4,
+    paddingVertical: 12,
+  },
+  crisisModalCancelText: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 15,
+    textAlign: 'center',
   },
 });

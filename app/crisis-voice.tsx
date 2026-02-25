@@ -24,6 +24,7 @@ import {
   hapticConfirm,
   hapticSuccess,
   hapticWarning,
+  isVoiceAvailable,
   listenForSpeech,
   parseAnswer,
   requestVoicePermissions,
@@ -40,6 +41,7 @@ import {
 const MAX_RETRIES = 3;
 
 type FlowState =
+  | 'unavailable'   // voice module not available (Expo Go)
   | 'init'          // requesting permissions
   | 'speaking'      // TTS is reading a prompt
   | 'listening'     // waiting for user speech
@@ -122,6 +124,15 @@ export default function CrisisVoiceScreen() {
 
   // Run the entire voice flow as an imperative async sequence
   const runFlow = useCallback(async () => {
+    // ------------------------------------------------------------------
+    // 0. Check if voice is available (requires dev build, not Expo Go)
+    // ------------------------------------------------------------------
+    if (!isVoiceAvailable()) {
+      setFlowState('unavailable');
+      setStatusText('');
+      return;
+    }
+
     // ------------------------------------------------------------------
     // 1. Request permissions
     // ------------------------------------------------------------------
@@ -273,6 +284,37 @@ export default function CrisisVoiceScreen() {
 
   const isListening = flowState === 'listening';
 
+  // Voice module not available (Expo Go) — offer visual crisis flow
+  if (flowState === 'unavailable') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.unavailableTitle}>Modo voz no disponible</Text>
+          <Text style={styles.unavailableText}>
+            El reconocimiento de voz requiere una versión de la app compilada.{'\n\n'}
+            Usa el modo visual para registrar tu crisis.
+          </Text>
+          <Pressable
+            onPress={() => router.replace('/crisis')}
+            style={({ pressed }) => [
+              styles.fallbackButton,
+              pressed && styles.fallbackButtonPressed,
+            ]}
+          >
+            <Text style={styles.fallbackButtonText}>Usar modo visual</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backLink}
+          >
+            <Text style={styles.hintText}>Volver</Text>
+          </Pressable>
+        </View>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
   return (
     <Pressable style={styles.container} onPress={handleAbort}>
       <View style={styles.content}>
@@ -321,5 +363,37 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.25)',
     fontSize: 12,
     textAlign: 'center',
+  },
+  unavailableTitle: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  unavailableText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  fallbackButton: {
+    backgroundColor: '#e74c3c',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  fallbackButtonPressed: {
+    opacity: 0.8,
+  },
+  fallbackButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backLink: {
+    padding: 12,
   },
 });

@@ -11,17 +11,30 @@
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 
-/** Lazy accessor for the native speech recognition module */
-function getSTT() {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { ExpoSpeechRecognitionModule } = require('expo-speech-recognition');
-  return ExpoSpeechRecognitionModule as {
-    requestPermissionsAsync: () => Promise<{ granted: boolean }>;
-    addListener: (event: string, cb: (e: any) => void) => { remove: () => void };
-    start: (opts: Record<string, any>) => void;
-    stop: () => void;
-    abort: () => void;
-  };
+/** Native speech recognition module type (null when unavailable, e.g. in Expo Go) */
+type STTModule = {
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  addListener: (event: string, cb: (e: any) => void) => { remove: () => void };
+  start: (opts: Record<string, any>) => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+/** Lazy accessor for the native speech recognition module. Returns null in Expo Go (no dev build). */
+function getSTT(): STTModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('expo-speech-recognition');
+    const stt = mod?.ExpoSpeechRecognitionModule ?? mod?.default?.ExpoSpeechRecognitionModule;
+    return stt ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** True if speech recognition is available (requires dev build, not Expo Go) */
+export function isVoiceAvailable(): boolean {
+  return getSTT() !== null;
 }
 
 import { AnswerValue } from '@/utils/storage';
@@ -317,6 +330,7 @@ export function stopSpeaking(): void {
 export async function requestVoicePermissions(): Promise<boolean> {
   try {
     const stt = getSTT();
+    if (!stt) return false;
     const result = await stt.requestPermissionsAsync();
     return result.granted;
   } catch (e) {
@@ -330,11 +344,12 @@ export async function requestVoicePermissions(): Promise<boolean> {
  * Resolves with the best transcript string, or null on timeout / no speech.
  */
 export function listenForSpeech(timeoutMs: number = 7000): Promise<string | null> {
+  const stt = getSTT();
+  if (!stt) return Promise.resolve(null);
+
   return new Promise((resolve) => {
     let resolved = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const stt = getSTT();
 
     const cleanup = () => {
       if (timer) clearTimeout(timer);
@@ -408,7 +423,7 @@ export async function hapticWarning(): Promise<void> {
 /** Abort any active speech recognition session */
 export function abortRecognition(): void {
   try {
-    getSTT().abort();
+    getSTT()?.abort();
   } catch { /* ignore – module may not be available */ }
 }
 
