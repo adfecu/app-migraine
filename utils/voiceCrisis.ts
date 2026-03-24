@@ -45,7 +45,7 @@ import { CRISIS_QUESTIONS } from '@/app/crisis';
 // ============================================================================
 
 /** The kind of spoken answer we expect for a voice prompt */
-export type VoiceAnswerType = 'yes_no' | 'number_0_10' | 'time_bucket';
+export type VoiceAnswerType = 'yes_no' | 'number_0_10' | 'time_bucket' | 'keyword_extract';
 
 /** A single voice prompt (one TTS utterance + one STT capture) */
 export interface VoicePrompt {
@@ -55,6 +55,8 @@ export interface VoicePrompt {
   answerType: VoiceAnswerType;
   /** For checkbox sub-questions: the option value to set if "sí" */
   optionValue?: string;
+  /** Override the default STT timeout (ms) for longer open-ended answers */
+  listenTimeoutMs?: number;
 }
 
 /** A group of voice prompts that map to one original CRISIS_QUESTIONS entry */
@@ -101,6 +103,64 @@ const TIME_BUCKETS: { keywords: string[]; hoursAgo: number }[] = [
   { keywords: ['entre tres y seis', 'tres a seis', 'entre 3 y 6', 'hace tres', 'hace cuatro', 'hace cinco', 'hace 3', 'hace 4', 'hace 5'], hoursAgo: 4.5 },
   { keywords: ['más de seis', 'más de 6', 'muchas horas', 'hace mucho'], hoursAgo: 8 },
 ];
+
+// ============================================================================
+// Keyword maps for open-ended voice extraction
+// ============================================================================
+
+type KeywordMap = Record<string, string[]>;
+
+const PAIN_CHAR_KEYWORDS: KeywordMap = {
+  pulsatil: ['latidos', 'pulsaciones', 'pulsátil', 'pulsatil', 'late', 'pulsa', 'pum'],
+  unilateral: ['un lado', 'un solo lado', 'unilateral'],
+  agravamiento_actividad: ['moverme', 'caminar', 'agacharme', 'movimiento', 'empeora', 'actividad'],
+};
+
+const AURA_KEYWORDS: KeywordMap = {
+  luces: ['luces', 'destellos', 'flashes', 'brillos'],
+  lineas: ['líneas', 'lineas'],
+  manchas: ['manchas', 'puntos'],
+  hormigueo: ['hormigueo', 'cosquilleo', 'adormecimiento'],
+};
+
+const SYMPTOM_KEYWORDS: KeywordMap = {
+  luz_ruido: ['luz', 'ruido', 'molesta', 'sensible', 'sonido'],
+  nauseas: ['náuseas', 'nauseas', 'vomitar', 'asco', 'vómito', 'vomito'],
+};
+
+const TRIGGER_KEYWORDS: KeywordMap = {
+  estres: ['estrés', 'estres', 'estresado', 'estresada', 'tensión', 'tension'],
+  falta_sueno: ['sueño', 'sueno', 'dormir', 'descanso', 'dormí', 'dormi', 'insomnio'],
+  clima: ['clima', 'presión', 'presion', 'tiempo', 'lluvia', 'calor', 'frío', 'frio'],
+  comida: ['comida', 'alimento', 'bebida', 'café', 'cafe', 'chocolate', 'alcohol', 'vino'],
+  menstruacion: ['menstruación', 'menstruacion', 'regla', 'periodo', 'período'],
+  pantallas: ['pantallas', 'pantalla', 'computadora', 'celular', 'monitor', 'luz intensa'],
+};
+
+const MEDICATION_KEYWORDS: KeywordMap = {
+  ibuprofeno: ['ibuprofeno', 'advil', 'motrin'],
+  acetaminofen: ['acetaminofén', 'acetaminofen', 'paracetamol', 'tylenol'],
+  aspirina: ['aspirina'],
+};
+
+const NEGATIVE_WORDS = ['no', 'nada', 'ninguno', 'ninguna', 'no sé', 'no se', 'nop', 'negativo'];
+
+/** Scan a transcript for known keywords and return matched option values */
+export function parseKeywords(text: string, keywordMap: KeywordMap): string[] {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const matched: string[] = [];
+
+  for (const [value, keywords] of Object.entries(keywordMap)) {
+    const normalizedKeywords = keywords.map(k =>
+      k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    );
+    if (normalizedKeywords.some(kw => lower.includes(kw))) {
+      matched.push(value);
+    }
+  }
+
+  return matched;
+}
 
 // ============================================================================
 // Parsing helpers
@@ -154,6 +214,8 @@ export function parseAnswer(text: string, type: VoiceAnswerType): string | numbe
       return parseNumber0to10(text);
     case 'time_bucket':
       return parseTimeBucket(text);
+    case 'keyword_extract':
+      return text;
   }
 }
 
@@ -193,81 +255,135 @@ function buildVoiceQuestions(): VoiceQuestion[] {
           combine: (subs) => (typeof subs[0] === 'number' ? subs[0] : 5),
         };
 
-      // 3-6. Checkbox questions – each option becomes a yes/no prompt
+      // 3. Pain characteristics – open-ended keyword extraction
       case 'crisis_pain_characteristics':
-      case 'crisis_aura':
-      case 'crisis_symptoms':
-      case 'crisis_triggers': {
-        const options = (q.options ?? []).filter(
-          (o) => !o.hasTextInput && !o.exclusive
-        );
-        const prompts: VoicePrompt[] = options.map((o) => ({
-          prompt: `¿${o.label}?`,
-          answerType: 'yes_no' as VoiceAnswerType,
-          optionValue: o.value,
-        }));
         return {
           questionId: q.id,
           questionText: q.text,
-          prompts,
+          prompts: [
+            {
+              prompt:
+                'Descríbeme tu dolor. Por ejemplo, si late o pulsa, si está en un solo lado, o si empeora al moverte. O di ninguna.',
+              answerType: 'keyword_extract' as VoiceAnswerType,
+              listenTimeoutMs: 10000,
+            },
+          ],
           combine: (subs) => {
-            const selected: string[] = [];
-            subs.forEach((ans, i) => {
-              if (ans === true && options[i]) {
-                selected.push(options[i].value);
-              }
-            });
-            // If nothing selected, mark with the exclusive option if available
-            if (selected.length === 0) {
+            const transcript = (subs[0] as string) ?? '';
+            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
               const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              if (exclusive) selected.push(exclusive.value);
+              return exclusive ? [exclusive.value] : ['ninguna'];
             }
-            return selected;
+            const matched = parseKeywords(transcript, PAIN_CHAR_KEYWORDS);
+            if (matched.length === 0) {
+              const exclusive = (q.options ?? []).find((o) => o.exclusive);
+              return exclusive ? [exclusive.value] : ['ninguna'];
+            }
+            return matched;
           },
         };
-      }
 
-      // 7. Medication – nested checkbox
-      case 'crisis_medication': {
-        const parentYes = (q.options ?? []).find((o) => o.subOptions);
-        const subOptions = (parentYes?.subOptions ?? []).filter(
-          (o) => !o.hasTextInput
-        );
-
-        // First prompt: did you take medication?
-        const prompts: VoicePrompt[] = [
-          {
-            prompt: '¿Has tomado alguna medicación para este dolor?',
-            answerType: 'yes_no' as VoiceAnswerType,
-          },
-        ];
-        // Sub-options only asked if yes (handled in the flow controller)
-        subOptions.forEach((o) => {
-          prompts.push({
-            prompt: `¿${o.label}?`,
-            answerType: 'yes_no' as VoiceAnswerType,
-            optionValue: o.value,
-          });
-        });
-
+      // 4. Aura – open-ended keyword extraction
+      case 'crisis_aura':
         return {
           questionId: q.id,
           questionText: q.text,
-          prompts,
+          prompts: [
+            {
+              prompt:
+                'Antes o durante el dolor, ¿viste luces, líneas, manchas, o sentiste hormigueo? Describe brevemente o di no.',
+              answerType: 'keyword_extract' as VoiceAnswerType,
+              listenTimeoutMs: 10000,
+            },
+          ],
           combine: (subs) => {
-            const tookMedication = subs[0] === true;
-            if (!tookMedication) return ['no'];
-
-            const selected: string[] = ['si'];
-            subs.slice(1).forEach((ans, i) => {
-              if (ans === true && subOptions[i]) {
-                selected.push(subOptions[i].value);
-              }
-            });
-            return selected;
+            const transcript = (subs[0] as string) ?? '';
+            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
+              return [];
+            }
+            return parseKeywords(transcript, AURA_KEYWORDS);
           },
         };
-      }
+
+      // 5. Symptoms – open-ended keyword extraction
+      case 'crisis_symptoms':
+        return {
+          questionId: q.id,
+          questionText: q.text,
+          prompts: [
+            {
+              prompt:
+                'Ahora mismo, ¿te molesta la luz o el ruido, o tienes náuseas? Describe o di ninguno.',
+              answerType: 'keyword_extract' as VoiceAnswerType,
+              listenTimeoutMs: 10000,
+            },
+          ],
+          combine: (subs) => {
+            const transcript = (subs[0] as string) ?? '';
+            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
+              const exclusive = (q.options ?? []).find((o) => o.exclusive);
+              return exclusive ? [exclusive.value] : ['ninguno'];
+            }
+            const matched = parseKeywords(transcript, SYMPTOM_KEYWORDS);
+            if (matched.length === 0) {
+              const exclusive = (q.options ?? []).find((o) => o.exclusive);
+              return exclusive ? [exclusive.value] : ['ninguno'];
+            }
+            return matched;
+          },
+        };
+
+      // 6. Triggers – open-ended keyword extraction
+      case 'crisis_triggers':
+        return {
+          questionId: q.id,
+          questionText: q.text,
+          prompts: [
+            {
+              prompt:
+                '¿Qué pudo causar esta crisis? Por ejemplo estrés, mal sueño, clima, comida, menstruación, pantallas, o di no sé.',
+              answerType: 'keyword_extract' as VoiceAnswerType,
+              listenTimeoutMs: 10000,
+            },
+          ],
+          combine: (subs) => {
+            const transcript = (subs[0] as string) ?? '';
+            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
+              const exclusive = (q.options ?? []).find((o) => o.exclusive);
+              return exclusive ? [exclusive.value] : ['ninguno'];
+            }
+            const matched = parseKeywords(transcript, TRIGGER_KEYWORDS);
+            if (matched.length === 0) {
+              const exclusive = (q.options ?? []).find((o) => o.exclusive);
+              return exclusive ? [exclusive.value] : ['ninguno'];
+            }
+            return matched;
+          },
+        };
+
+      // 7. Medication – open-ended keyword extraction
+      case 'crisis_medication':
+        return {
+          questionId: q.id,
+          questionText: q.text,
+          prompts: [
+            {
+              prompt:
+                '¿Tomaste alguna medicación? Di el nombre, por ejemplo ibuprofeno, acetaminofén, aspirina, o di no.',
+              answerType: 'keyword_extract' as VoiceAnswerType,
+              listenTimeoutMs: 10000,
+            },
+          ],
+          combine: (subs) => {
+            const transcript = (subs[0] as string) ?? '';
+            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
+              return ['no'];
+            }
+            const matched = parseKeywords(transcript, MEDICATION_KEYWORDS);
+            if (matched.length === 0) return ['no'];
+            return ['si', ...matched];
+          },
+        };
 
       // 8. Healthcare visit – yes/no
       case 'crisis_healthcare_visit':

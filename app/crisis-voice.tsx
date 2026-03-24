@@ -200,18 +200,7 @@ export default function CrisisVoiceScreen() {
       if (abortRef.current) break;
 
       const prompt = vq.prompts[i];
-
-      // Special handling for medication: skip sub-options if top-level answer is "no"
-      if (vq.questionId === 'crisis_medication' && i === 1) {
-        // Check if first answer was "no"
-        if (subAnswers[0] !== true) {
-          // Fill remaining sub-answers with false
-          for (let j = i; j < vq.prompts.length; j++) {
-            subAnswers.push(false);
-          }
-          break;
-        }
-      }
+      const timeout = prompt.listenTimeoutMs ?? 7000;
 
       // Speak the prompt
       setFlowState('speaking');
@@ -228,11 +217,15 @@ export default function CrisisVoiceScreen() {
 
         setFlowState('listening');
 
-        const transcript = await listenForSpeech(7000);
+        const transcript = await listenForSpeech(timeout);
 
         if (transcript) {
           setFlowState('processing');
-          parsed = parseAnswer(transcript, prompt.answerType);
+          if (prompt.answerType === 'keyword_extract') {
+            parsed = transcript;
+          } else {
+            parsed = parseAnswer(transcript, prompt.answerType);
+          }
         }
 
         if (parsed === null) {
@@ -242,7 +235,6 @@ export default function CrisisVoiceScreen() {
             await speak('No entendí, por favor repite.');
             await delay(300);
           } else {
-            // Max retries exceeded – skip with default
             await hapticWarning();
             await speak('No pude entender. Continuamos con la siguiente pregunta.');
           }
