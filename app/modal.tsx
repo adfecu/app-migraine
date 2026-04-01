@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { Alert, ActivityIndicator, Platform, Pressable, StyleSheet } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet } from 'react-native';
 
+import { ONBOARDING_COMPLETE_KEY } from '@/app/onboarding';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useAuth } from '@/contexts/AuthContext';
-import { ONBOARDING_COMPLETE_KEY } from '@/app/onboarding';
 import { useState } from 'react';
 
 export default function ModalScreen() {
@@ -49,52 +49,61 @@ export default function ModalScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.logoutButton,
-          { backgroundColor: Colors[colorScheme ?? 'light'].tint },
-          pressed && styles.logoutButtonPressed,
-        ]}
-        onPress={handleLogout}
+      <View style={styles.content}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.logoutButton,
+            { backgroundColor: Colors[colorScheme ?? 'light'].tint },
+            pressed && styles.logoutButtonPressed,
+          ]}
+          onPress={handleLogout}
+        >
+          <Text style={[styles.logoutButtonText, { color: colorScheme === 'dark' ? '#000' : '#fff' }]}>
+            Cerrar sesión
+          </Text>
+        </Pressable>
+
+        <View style={styles.debugSection}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.debugButton,
+              { borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.3)' : '#C7C7CC' },
+              pressed && styles.debugButtonPressed,
+            ]}
+            onPress={handleDebugOnboarding}
+          >
+            <Text style={[
+              styles.debugButtonText,
+              { color: Colors[colorScheme ?? 'light'].text, opacity: 0.75 },
+            ]}>Debug: Ver Onboarding</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.deleteSection}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.deleteButton,
+              pressed && styles.deleteButtonPressed,
+              deleting && styles.deleteButtonDisabled,
+            ]}
+            onPress={handleDeleteAccount}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.deleteButtonText}>Eliminar cuenta</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+
+      <Text
+        style={[styles.version, { color: Colors[colorScheme ?? 'light'].text }]}
+        accessibilityRole="text"
       >
-        <Text style={[styles.logoutButtonText, { color: colorScheme === 'dark' ? '#000' : '#fff' }]}>
-          Cerrar sesión
-        </Text>
-      </Pressable>
-
-      <View style={styles.debugSection}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.debugButton,
-            { borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.3)' : '#C7C7CC' },
-            pressed && styles.debugButtonPressed,
-          ]}
-          onPress={handleDebugOnboarding}
-        >
-          <Text style={[
-            styles.debugButtonText,
-            { color: Colors[colorScheme ?? 'light'].text, opacity: 0.75 },
-          ]}>Debug: Ver Onboarding</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.deleteSection}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.deleteButton,
-            pressed && styles.deleteButtonPressed,
-            deleting && styles.deleteButtonDisabled,
-          ]}
-          onPress={handleDeleteAccount}
-          disabled={deleting}
-        >
-          {deleting ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.deleteButtonText}>Eliminar cuenta</Text>
-          )}
-        </Pressable>
-      </View>
+        v1.0
+      </Text>
 
       {/* Use a light status bar on iOS to account for the black space above the modal */}
       <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
@@ -106,7 +115,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  version: {
+    fontSize: 13,
+    opacity: 0.45,
+    paddingBottom: 28,
   },
   logoutButton: {
     paddingVertical: 14,

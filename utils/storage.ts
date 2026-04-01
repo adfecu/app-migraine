@@ -19,6 +19,8 @@ export {
 } from './supabaseStorage';
 
 // Import internal functions needed for evaluation
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   AnswerValue,
   calculateAndSaveCumulativeLoad,
@@ -406,4 +408,159 @@ export async function checkAndResetCLIfHeadacheResolved(checkIns: CheckIn[]): Pr
   if (hadHeadacheYesterday && !hadHeadacheToday) {
     await resetCumulativeLoad();
   }
+}
+
+// ============================================================================
+// Migraine Alert (High-Likelihood Popup)
+// ============================================================================
+
+const MIGRAINE_ALERT_DISMISSED_KEY = 'migraine_alert_dismissed_at';
+const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export interface MigraineAlertData {
+  reasons: string[];
+}
+
+export async function getMigraineAlertDismissedAt(): Promise<string | null> {
+  return AsyncStorage.getItem(MIGRAINE_ALERT_DISMISSED_KEY);
+}
+
+export async function setMigraineAlertDismissedAt(): Promise<void> {
+  await AsyncStorage.setItem(MIGRAINE_ALERT_DISMISSED_KEY, new Date().toISOString());
+}
+
+/**
+ * Simplified migraine score for crisis entries whose question wording
+ * differs from check-in questions (mapAnswersByQuestion won't match).
+ */
+function scoreCrisisEntry(entry: CheckIn): number {
+  let score = 0;
+  const qMap: Record<string, AnswerValue> = {};
+
+  entry.questions.forEach((q, i) => {
+    const a = entry.answers[i];
+    if (q.includes('intensidad')) qMap['intensity'] = a;
+    else if (q.includes('sentiste el dolor') || q.includes('sientes el dolor'))
+      qMap['painChars'] = a;
+    else if (q.includes('síntomas')) qMap['symptoms'] = a;
+    else if (q.includes('comenzó el dolor')) qMap['painStart'] = a;
+  });
+
+  if (qMap['painStart'] && entry.endDate) {
+    const hours =
+      (new Date(entry.endDate).getTime() - new Date(qMap['painStart'] as string).getTime()) /
+      3_600_000;
+    if (hours >= 4) score += 30;
+  }
+
+  const painChars = Array.isArray(qMap['painChars']) ? qMap['painChars'] as string[] : [];
+  if (painChars.includes('unilateral')) score += 10;
+  if (painChars.includes('pulsatil')) score += 10;
+  if (painChars.includes('agravamiento_actividad')) score += 10;
+
+  if (typeof qMap['intensity'] === 'number' && qMap['intensity'] >= 4) score += 20;
+
+  const symptoms = Array.isArray(qMap['symptoms']) ? qMap['symptoms'] as string[] : [];
+  if (symptoms.includes('nauseas')) score += 10;
+  if (symptoms.includes('luz_ruido')) score += 10;
+
+  return Math.min(100, score);
+}
+
+/**
+ * Evaluates whether a high-migraine-likelihood alert should be shown.
+ * Returns alert metadata when triggered, or null when no alert is warranted.
+ *
+ * Trigger conditions (any one is sufficient):
+ *  1. Latest check-in meets all ICHD-3 B-D criteria (mayHaveMigraine)
+ *  2. Active unresolved crisis (no end_date)
+ *  3. Chronic pattern (>= 15 headache days/month over last 90 days)
+ *  4. >50 % of recent headache episodes score >= 70, with >= 3 episodes
+ */
+export function shouldShowMigraineAlert(checkIns: CheckIn[]): MigraineAlertData | null {
+  if (checkIns.length === 0) return null;
+
+  const reasons: string[] = [];
+
+  // --- Condition 1: Immediate high score on latest check-in ---
+  const sorted = [...checkIns].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+  const latestCheckin = sorted.find(c => c.type === 'checkin');
+  if (latestCheckin) {
+    const evalResult = evaluateMigraine(latestCheckin);
+    if (evalResult.mayHaveMigraine) {
+      reasons.push('Tu último check-in cumple los criterios clínicos de migraña (ICHD-3)');
+    }
+  }
+
+  // --- Condition 2: Active unresolved crisis ---
+  const activeCrisis = checkIns.some(c => c.type === 'crisis' && !c.endDate);
+  if (activeCrisis) {
+    reasons.push('Tienes un episodio de crisis activo sin resolver');
+  }
+
+  // --- Conditions 3 & 4: pattern-based (last 90 days) ---
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - 90);
+
+  const recent = checkIns.filter(c => new Date(c.date) >= cutoff);
+
+  // Condition 3: Chronic pattern (>= 15 headache days / month)
+  const headacheDates = new Set<string>();
+  for (const entry of recent) {
+    if (entry.type === 'crisis') {
+      headacheDates.add(new Date(entry.date).toISOString().split('T')[0]);
+    } else {
+      const mapped = mapAnswersByQuestion(entry);
+      if (mapped['headache'] === true) {
+        headacheDates.add(new Date(entry.date).toISOString().split('T')[0]);
+      }
+    }
+  }
+  const months = Math.max(1, 90 / 30);
+  const headacheDaysPerMonth = headacheDates.size / months;
+  if (headacheDaysPerMonth >= 15) {
+    reasons.push(
+      `Patrón crónico detectado: ${headacheDates.size} días con cefalea en los últimos 90 días (~${Math.round(headacheDaysPerMonth)}/mes)`,
+    );
+  }
+
+  // Condition 4: Frequent high-score episodes (>50 % scoring >= 70, min 3)
+  const headacheEpisodes = recent.filter(c => {
+    if (c.type === 'crisis') return true;
+    const mapped = mapAnswersByQuestion(c);
+    return mapped['headache'] === true;
+  });
+
+  if (headacheEpisodes.length >= 3) {
+    let highCount = 0;
+    for (const ep of headacheEpisodes) {
+      const score =
+        ep.type === 'crisis'
+          ? scoreCrisisEntry(ep)
+          : evaluateMigraine(ep).score;
+      if (score >= 70) highCount++;
+    }
+    const pct = Math.round((highCount / headacheEpisodes.length) * 100);
+    if (pct > 50) {
+      reasons.push(
+        `${pct}% de tus episodios recientes tienen alta probabilidad de migraña (${highCount}/${headacheEpisodes.length})`,
+      );
+    }
+  }
+
+  if (reasons.length === 0) return null;
+  return { reasons };
+}
+
+/**
+ * Returns true when the alert cooldown (24 h) has expired or
+ * the alert has never been dismissed.
+ */
+export async function isMigraineAlertCooldownExpired(): Promise<boolean> {
+  const dismissed = await getMigraineAlertDismissedAt();
+  if (!dismissed) return true;
+  return Date.now() - new Date(dismissed).getTime() >= ALERT_COOLDOWN_MS;
 }

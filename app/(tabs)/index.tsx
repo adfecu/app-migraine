@@ -1,3 +1,4 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Href, Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Modal, Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
@@ -12,7 +13,11 @@ import {
   getAllCheckIns,
   getLatestCheckIn,
   HeadacheRiskEvaluation,
+  isMigraineAlertCooldownExpired,
+  MigraineAlertData,
   MigraineEvaluation,
+  setMigraineAlertDismissedAt,
+  shouldShowMigraineAlert,
 } from '@/utils/storage';
 
 // Risk level colors
@@ -57,6 +62,13 @@ export default function TabOneScreen() {
   const [hasCheckIn, setHasCheckIn] = useState(false);
   const [headacheRisk, setHeadacheRisk] = useState<HeadacheRiskEvaluation | null>(null);
   const [showCrisisModal, setShowCrisisModal] = useState(false);
+  const [showMigraineAlert, setShowMigraineAlert] = useState(false);
+  const [migraineAlertData, setMigraineAlertData] = useState<MigraineAlertData | null>(null);
+
+  const dismissMigraineAlert = useCallback(async () => {
+    setShowMigraineAlert(false);
+    await setMigraineAlertDismissedAt();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -81,6 +93,16 @@ export default function TabOneScreen() {
           setHasCheckIn(false);
           setEvaluation(DEFAULT_EVALUATION);
           setHeadacheRisk(null);
+        }
+
+        // Evaluate migraine alert conditions
+        const alertData = shouldShowMigraineAlert(allCheckIns);
+        if (alertData) {
+          const cooldownExpired = await isMigraineAlertCooldownExpired();
+          if (cooldownExpired) {
+            setMigraineAlertData(alertData);
+            setShowMigraineAlert(true);
+          }
         }
       };
       loadData();
@@ -283,6 +305,66 @@ export default function TabOneScreen() {
                 onPress={() => setShowCrisisModal(false)}
               >
                 <Text style={styles.crisisModalCancelText}>Cancelar</Text>
+              </Pressable>
+            </RNView>
+          </Pressable>
+        </Modal>
+
+        {/* High migraine likelihood alert */}
+        <Modal
+          visible={showMigraineAlert}
+          transparent
+          animationType="fade"
+          onRequestClose={dismissMigraineAlert}
+        >
+          <Pressable
+            style={styles.alertOverlay}
+            onPress={dismissMigraineAlert}
+          >
+            <RNView style={styles.alertContent}>
+              <FontAwesome name="exclamation-triangle" size={40} color="#F44336" style={styles.alertIcon} />
+
+              <Text style={styles.alertTitle}>
+                Alerta: Alta Probabilidad de Migraña
+              </Text>
+
+              <Text style={styles.alertBody}>
+                Según tus registros recientes, existe una alta probabilidad de que estés
+                experimentando migrañas. Te recomendamos consultar a un médico lo antes posible.
+              </Text>
+
+              {migraineAlertData && migraineAlertData.reasons.length > 0 && (
+                <RNView style={styles.alertReasons}>
+                  {migraineAlertData.reasons.map((reason, index) => (
+                    <RNView key={index} style={styles.alertReasonRow}>
+                      <Text style={styles.alertReasonBullet}>•</Text>
+                      <Text style={styles.alertReasonText}>{reason}</Text>
+                    </RNView>
+                  ))}
+                </RNView>
+              )}
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.alertReportButton,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={async () => {
+                  await dismissMigraineAlert();
+                  router.push('/report' as Href);
+                }}
+              >
+                <Text style={styles.alertReportButtonText}>Ver Informe Médico</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.alertDismissButton,
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={dismissMigraineAlert}
+              >
+                <Text style={styles.alertDismissButtonText}>Entendido</Text>
               </Pressable>
             </RNView>
           </Pressable>
@@ -535,6 +617,88 @@ const styles = StyleSheet.create({
   },
   crisisModalCancelText: {
     color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  // Migraine alert modal styles
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  alertContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F44336',
+  },
+  alertIcon: {
+    marginBottom: 16,
+  },
+  alertTitle: {
+    color: '#F44336',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  alertBody: {
+    color: '#e0e0e0',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  alertReasons: {
+    width: '100%',
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  alertReasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginVertical: 3,
+  },
+  alertReasonBullet: {
+    color: '#F44336',
+    fontSize: 14,
+    fontWeight: '700',
+    marginRight: 8,
+    marginTop: 1,
+  },
+  alertReasonText: {
+    color: '#e0e0e0',
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
+  alertReportButton: {
+    width: '100%',
+    backgroundColor: '#F44336',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  alertReportButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  alertDismissButton: {
+    paddingVertical: 10,
+  },
+  alertDismissButtonText: {
+    color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 15,
     textAlign: 'center',
   },
