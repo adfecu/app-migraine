@@ -35,18 +35,24 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
+  const fontsReady = loaded || (!!error && !__DEV__);
+
   useEffect(() => {
-    if (error) throw error;
+    if (error && __DEV__) {
+      throw error;
+    }
+    if (error && !__DEV__) {
+      console.error('Font loading failed:', error);
+    }
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
+    if (fontsReady) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [fontsReady]);
 
-  if (!loaded) {
+  if (!fontsReady) {
     return null;
   }
 

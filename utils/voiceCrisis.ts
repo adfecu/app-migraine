@@ -223,7 +223,7 @@ export function parseAnswer(text: string, type: VoiceAnswerType): string | numbe
 // Voice question definitions (derived from CRISIS_QUESTIONS)
 // ============================================================================
 
-function buildVoiceQuestions(): VoiceQuestion[] {
+function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQuestion[] {
   return CRISIS_QUESTIONS.map((q) => {
     switch (q.id) {
       // 1. Pain start – converted to time bucket
@@ -334,14 +334,19 @@ function buildVoiceQuestions(): VoiceQuestion[] {
         };
 
       // 6. Triggers – open-ended keyword extraction
-      case 'crisis_triggers':
+      case 'crisis_triggers': {
+        const triggerPrompt = userSex === 'male'
+          ? '¿Qué pudo causar esta crisis? Por ejemplo estrés, mal sueño, clima, comida, pantallas, o di no sé.'
+          : '¿Qué pudo causar esta crisis? Por ejemplo estrés, mal sueño, clima, comida, menstruación, pantallas, o di no sé.';
+        const triggerKeywords = userSex === 'male'
+          ? Object.fromEntries(Object.entries(TRIGGER_KEYWORDS).filter(([k]) => k !== 'menstruacion'))
+          : TRIGGER_KEYWORDS;
         return {
           questionId: q.id,
           questionText: q.text,
           prompts: [
             {
-              prompt:
-                '¿Qué pudo causar esta crisis? Por ejemplo estrés, mal sueño, clima, comida, menstruación, pantallas, o di no sé.',
+              prompt: triggerPrompt,
               answerType: 'keyword_extract' as VoiceAnswerType,
               listenTimeoutMs: 10000,
             },
@@ -352,7 +357,7 @@ function buildVoiceQuestions(): VoiceQuestion[] {
               const exclusive = (q.options ?? []).find((o) => o.exclusive);
               return exclusive ? [exclusive.value] : ['ninguno'];
             }
-            const matched = parseKeywords(transcript, TRIGGER_KEYWORDS);
+            const matched = parseKeywords(transcript, triggerKeywords);
             if (matched.length === 0) {
               const exclusive = (q.options ?? []).find((o) => o.exclusive);
               return exclusive ? [exclusive.value] : ['ninguno'];
@@ -360,6 +365,7 @@ function buildVoiceQuestions(): VoiceQuestion[] {
             return matched;
           },
         };
+      }
 
       // 7. Medication – open-ended keyword extraction
       case 'crisis_medication':
@@ -416,7 +422,9 @@ function buildVoiceQuestions(): VoiceQuestion[] {
   });
 }
 
-export const VOICE_QUESTIONS: VoiceQuestion[] = buildVoiceQuestions();
+export function getVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQuestion[] {
+  return buildVoiceQuestions(userSex);
+}
 
 // ============================================================================
 // TTS helpers

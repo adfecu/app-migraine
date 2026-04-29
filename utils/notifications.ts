@@ -1,14 +1,24 @@
 import { PermissionStatus } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
 
-// Configure how notifications are handled when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+let _handlerInstalled = false;
+
+/**
+ * Installs the foreground notification handler.
+ * Deferred from module-level to avoid a TurboModule void-method call
+ * during JS bundle initialization, which can race with Hermes on iOS.
+ */
+function ensureNotificationHandler() {
+  if (_handlerInstalled) return;
+  _handlerInstalled = true;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 // Notification identifier for the daily check-in reminder
 const DAILY_CHECKIN_NOTIFICATION_ID = 'daily-checkin-reminder';
@@ -18,6 +28,7 @@ const DAILY_CHECKIN_NOTIFICATION_ID = 'daily-checkin-reminder';
  * @returns Promise resolving to the permission status
  */
 export async function requestNotificationPermissions(): Promise<Notifications.NotificationPermissionsStatus> {
+  ensureNotificationHandler();
   try {
     const existingPermissions = await Notifications.getPermissionsAsync();
 
@@ -76,6 +87,7 @@ export async function cancelDailyCheckinNotification(): Promise<void> {
  * @returns Promise resolving to the notification identifier, or null if scheduling failed
  */
 export async function scheduleDailyCheckinNotification(hour = 8, minute = 0): Promise<string | null> {
+  ensureNotificationHandler();
   try {
     // Check if we have permissions first
     const hasPermissions = await hasNotificationPermissions();
@@ -117,6 +129,7 @@ export async function scheduleDailyCheckinNotification(hour = 8, minute = 0): Pr
  * This should be called when the app starts and user is authenticated
  */
 export async function initializeNotifications(): Promise<void> {
+  ensureNotificationHandler();
   try {
     // Request permissions
     const permissionStatus = await requestNotificationPermissions();

@@ -354,6 +354,26 @@ export async function saveUserThreshold(threshold: number): Promise<void> {
 }
 
 /**
+ * Gets the user's sex from their profile
+ */
+export async function getUserSex(): Promise<'male' | 'female' | null> {
+  try {
+    const userId = await getCurrentUserId();
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('sex')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data?.sex) return null;
+    return data.sex as 'male' | 'female';
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Saves the user's profile (name, sex, age) to user_settings (upsert)
  */
 export async function saveUserProfile(name: string, sex: 'male' | 'female', age: number): Promise<void> {

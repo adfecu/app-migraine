@@ -14,7 +14,7 @@
 export {
   AnswerValue,
   CheckIn, DEFAULT_THRESHOLD, deleteCheckIn, EntryType, getAllCheckIns,
-  getLatestCheckIn, getUserThreshold, QUESTION_PATTERNS, resetCumulativeLoad, saveCheckIn,
+  getLatestCheckIn, getUserSex, getUserThreshold, QUESTION_PATTERNS, resetCumulativeLoad, saveCheckIn,
   saveCrisisEpisode, updateUserThreshold
 } from './supabaseStorage';
 

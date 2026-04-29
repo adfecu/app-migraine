@@ -2,13 +2,13 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { AnswerValue, saveCheckIn } from '@/utils/storage';
+import { AnswerValue, getUserSex, saveCheckIn } from '@/utils/storage';
 
 // Question types
 type QuestionType = 'yesno' | 'slider' | 'slider_labeled' | 'multiple_choice' | 'checkbox' | 'yesno_with_text' | 'time_picker' | 'checkbox_nested';
@@ -833,6 +833,9 @@ function CheckboxNested({ options, value, onChange, colorScheme, textInputs = {}
 export default function CheckinScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
+  const [userSex, setUserSex] = useState<'male' | 'female' | null>(null);
+  useEffect(() => { getUserSex().then(setUserSex); }, []);
+
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerValue | null>>(() => {
     const initial = new Map<string, AnswerValue | null>();
@@ -847,8 +850,15 @@ export default function CheckinScreen() {
   // Get the active questions based on Q1 answer
   const activeQuestions = useMemo(() => {
     const hadHeadache = answers.get('q1_headache') === true;
-    return QUESTIONS.filter(q => !q.conditional || hadHeadache);
-  }, [answers]);
+    return QUESTIONS
+      .filter(q => !q.conditional || hadHeadache)
+      .map(q => {
+        if (userSex === 'male' && q.id === 'q7_triggers' && q.options) {
+          return { ...q, options: q.options.filter(o => o.value !== 'menstruacion') };
+        }
+        return q;
+      });
+  }, [answers, userSex]);
 
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;

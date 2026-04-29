@@ -3,11 +3,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
-import { AnswerValue, saveCrisisEpisode } from '@/utils/storage';
+import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
 
 // Question types
 type QuestionType = 'yesno' | 'slider' | 'slider_labeled' | 'multiple_choice' | 'checkbox' | 'yesno_with_text' | 'datetime_picker' | 'checkbox_nested';
@@ -726,6 +726,9 @@ function CheckboxNested({ options, value, onChange, textInputs = {}, onTextInput
 
 export default function CrisisScreen() {
   const router = useRouter();
+  const [userSex, setUserSex] = useState<'male' | 'female' | null>(null);
+  useEffect(() => { getUserSex().then(setUserSex); }, []);
+
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerValue | null>>(() => {
     const initial = new Map<string, AnswerValue | null>();
@@ -737,7 +740,15 @@ export default function CrisisScreen() {
   // Text inputs for checkbox options with hasTextInput
   const [textInputs, setTextInputs] = useState<Record<string, Record<string, string>>>({});
 
-  const activeQuestions = CRISIS_QUESTIONS;
+  const activeQuestions = useMemo(() => {
+    if (userSex !== 'male') return CRISIS_QUESTIONS;
+    return CRISIS_QUESTIONS.map(q => {
+      if (q.id === 'crisis_triggers' && q.options) {
+        return { ...q, options: q.options.filter(o => o.value !== 'menstruacion') };
+      }
+      return q;
+    });
+  }, [userSex]);
 
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;

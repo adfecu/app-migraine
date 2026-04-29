@@ -17,10 +17,11 @@ import {
 } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import { AnswerValue, saveCrisisEpisode } from '@/utils/storage';
+import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
 import {
   abortRecognition,
   delay,
+  getVoiceQuestions,
   hapticConfirm,
   hapticSuccess,
   hapticWarning,
@@ -30,7 +31,6 @@ import {
   requestVoicePermissions,
   speak,
   stopSpeaking,
-  VOICE_QUESTIONS,
   VoiceQuestion,
 } from '@/utils/voiceCrisis';
 
@@ -158,10 +158,13 @@ export default function CrisisVoiceScreen() {
     // ------------------------------------------------------------------
     // 3. Walk through every voice question
     // ------------------------------------------------------------------
+    const userSex = await getUserSex();
+    const voiceQuestions = getVoiceQuestions(userSex);
+
     const allAnswers: AnswerValue[] = [];
     const allQuestionTexts: string[] = [];
 
-    for (const vq of VOICE_QUESTIONS) {
+    for (const vq of voiceQuestions) {
       if (abortRef.current) return;
 
       const answer = await processQuestion(vq);
