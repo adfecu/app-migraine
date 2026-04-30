@@ -41,13 +41,11 @@ import {
 const MAX_RETRIES = 3;
 
 type FlowState =
-  | 'unavailable'   // voice module not available (Expo Go)
   | 'init'          // requesting permissions
   | 'speaking'      // TTS is reading a prompt
   | 'listening'     // waiting for user speech
   | 'processing'    // parsing answer
-  | 'done'          // all questions answered, saving
-  | 'error';        // something went wrong
+  | 'done';         // all questions answered, saving
 
 // ============================================================================
 // Pulsing dot component (subtle listening indicator)
@@ -128,8 +126,9 @@ export default function CrisisVoiceScreen() {
     // 0. Check if voice is available (requires dev build, not Expo Go)
     // ------------------------------------------------------------------
     if (!isVoiceAvailable()) {
-      setFlowState('unavailable');
-      setStatusText('');
+      if (!abortRef.current) {
+        router.replace('/crisis');
+      }
       return;
     }
 
@@ -141,9 +140,10 @@ export default function CrisisVoiceScreen() {
 
     const granted = await requestVoicePermissions();
     if (!granted) {
-      setFlowState('error');
-      setStatusText('Permisos de micrófono denegados.');
-      await speak('No se pudieron obtener permisos de micrófono. Toca la pantalla para salir.');
+      stopSpeaking();
+      if (!abortRef.current) {
+        router.replace('/crisis');
+      }
       return;
     }
 
@@ -279,47 +279,12 @@ export default function CrisisVoiceScreen() {
 
   const isListening = flowState === 'listening';
 
-  // Voice module not available (Expo Go) — offer visual crisis flow
-  if (flowState === 'unavailable') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.unavailableTitle}>Modo voz no disponible</Text>
-          <Text style={styles.unavailableText}>
-            El reconocimiento de voz requiere una versión de la app compilada.{'\n\n'}
-            Usa el modo visual para registrar tu crisis.
-          </Text>
-          <Pressable
-            onPress={() => router.replace('/crisis')}
-            style={({ pressed }) => [
-              styles.fallbackButton,
-              pressed && styles.fallbackButtonPressed,
-            ]}
-          >
-            <Text style={styles.fallbackButtonText}>Usar modo visual</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backLink}
-          >
-            <Text style={styles.hintText}>Volver</Text>
-          </Pressable>
-        </View>
-        <StatusBar style="light" />
-      </View>
-    );
-  }
-
   return (
     <Pressable style={styles.container} onPress={handleAbort}>
       <View style={styles.content}>
         <PulsingDot active={isListening} />
         <Text style={styles.statusText}>{statusText}</Text>
-        <Text style={styles.hintText}>
-          {flowState === 'error'
-            ? 'Toca para salir'
-            : 'Toca en cualquier lugar para cancelar'}
-        </Text>
+        <Text style={styles.hintText}>Toca en cualquier lugar para cancelar</Text>
       </View>
       <StatusBar style="light" />
     </Pressable>
@@ -358,37 +323,5 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.25)',
     fontSize: 12,
     textAlign: 'center',
-  },
-  unavailableTitle: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  unavailableText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  fallbackButton: {
-    backgroundColor: '#e74c3c',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  fallbackButtonPressed: {
-    opacity: 0.8,
-  },
-  fallbackButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  backLink: {
-    padding: 12,
   },
 });

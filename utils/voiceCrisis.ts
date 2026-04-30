@@ -10,6 +10,7 @@
  */
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
+import type { Voice } from 'expo-speech';
 
 /** Native speech recognition module type (null when unavailable, e.g. in Expo Go) */
 type STTModule = {
@@ -430,11 +431,72 @@ export function getVoiceQuestions(userSex: 'male' | 'female' | null = null): Voi
 // TTS helpers
 // ============================================================================
 
-/** Speak a text string and return a Promise that resolves when done */
-export function speak(text: string): Promise<void> {
+/** Prefer male Spanish voices (labels differ by OS / engine). */
+function scoreMaleSpanishVoice(v: Voice): number {
+  const blob = `${v.name} ${v.identifier}`.toLowerCase();
+  let score = 0;
+  if (
+    /\b(male|masculino|hombre|m\.)\b|google.*male|samsung.*male|tts.*male|-male-|_male/i.test(blob)
+  ) {
+    score += 60;
+  }
+  if (
+    /\bjorge\b|\bdiego\b|\bcarlos\b|\bantonio\b|\bpablo\b|\bmanuel\b|\bjavier\b|\bdaniel\b|\balberto\b|\bpedro\b|\bmartín\b|\bmartin\b|\bluis\b|\braúl\b|\braul\b|\bfernando\b|\benrique\b|\bricardo\b|\bvicente\b|\bandrés\b|\bandres\b|\bjuan\b|\bsergio\b|\broberto\b/i.test(
+      blob
+    )
+  ) {
+    score += 40;
+  }
+  if (
+    /\bfemale\b|\bfemenina\b|\bmujer\b|\bpaulina\b|\bmónica\b|\bmonica\b|\bhelena\b|\blaura\b|\bsofía\b|\bsofia\b/gi.test(blob)
+  ) {
+    score -= 100;
+  }
+  const lang = v.language.replace('_', '-').toLowerCase();
+  if (lang === 'es-mx' || lang.startsWith('es-mx')) score += 8;
+  else if (lang === 'es-419' || lang.startsWith('es-419')) score += 5;
+  else if (lang === 'es-es' || lang.startsWith('es-es')) score += 3;
+  else if (/^es(-|$)/.test(lang)) score += 1;
+  return score;
+}
+
+function pickMaleSpanishVoice(voices: Voice[]): Voice | undefined {
+  const spanish = voices.filter(v => /^es[-_]?/i.test(v.language.trim()));
+  if (spanish.length === 0) return undefined;
+
+  const ranked = [...spanish].sort((a, b) => scoreMaleSpanishVoice(b) - scoreMaleSpanishVoice(a));
+  const best = ranked[0];
+  if (scoreMaleSpanishVoice(best) > 0) return best;
+
+  const mx = spanish.filter(v => /^es[-_]MX$/i.test(v.language.replace('_', '-')));
+  const pool = mx.length > 0 ? mx : spanish;
+  const notFemale = pool.filter(v => scoreMaleSpanishVoice(v) >= -50);
+  return notFemale[0] ?? pool[0];
+}
+
+let maleSpanishVoiceIdPromise: Promise<string | undefined> | null = null;
+
+async function getMaleSpanishVoiceIdentifier(): Promise<string | undefined> {
+  if (!maleSpanishVoiceIdPromise) {
+    maleSpanishVoiceIdPromise = (async () => {
+      try {
+        const voices = await Speech.getAvailableVoicesAsync();
+        return pickMaleSpanishVoice(voices)?.identifier;
+      } catch {
+        return undefined;
+      }
+    })();
+  }
+  return maleSpanishVoiceIdPromise;
+}
+
+/** Speak a text string and return a Promise that resolves when done (male Spanish voice when available). */
+export async function speak(text: string): Promise<void> {
+  const voice = await getMaleSpanishVoiceIdentifier();
   return new Promise((resolve, reject) => {
     Speech.speak(text, {
       language: 'es-MX',
+      ...(voice ? { voice } : {}),
       rate: 0.92,
       onDone: resolve,
       onError: (err) => reject(err),

@@ -459,7 +459,7 @@ function architecture() {
           spacing: { before: 0, after: 0 },
         }),
         new Paragraph({
-          children: [t('Check-in diario   /   Registro de crisis (visual o por voz)', { bold: true })],
+          children: [t('Check-in diario   /   Registro de crisis (voz por defecto; formulario si voz no disponible)', { bold: true })],
           alignment: AlignmentType.CENTER,
           spacing: { before: 40, after: 40 },
         }),
@@ -525,8 +525,8 @@ function architecture() {
       [
         ['Pantalla Inicio', 'app/(tabs)/index.tsx', 'Score de migraña, zona de riesgo y accesos rápidos.'],
         ['Check-in diario', 'app/checkin.tsx', 'Cuestionario corto con sección condicional de dolor.'],
-        ['Registro de crisis (visual)', 'app/crisis.tsx', 'Formulario detallado durante un ataque activo.'],
-        ['Registro de crisis (voz)', 'app/crisis-voice.tsx + utils/voiceCrisis.ts', 'Flujo manos libres para fotofobia intensa.'],
+        ['Registro de crisis (visual)', 'app/crisis.tsx', 'Formulario detallado; se abre automáticamente si voz no está disponible o sin permiso de micrófono.'],
+        ['Registro de crisis (voz)', 'app/crisis-voice.tsx + utils/voiceCrisis.ts', 'Flujo manos libres por defecto cuando hay STT nativo y permiso de micrófono.'],
         ['Diario', 'app/(tabs)/two.tsx', 'Calendario y estadísticas de episodios.'],
         ['Biblioteca', 'app/(tabs)/biblioteca.tsx', 'Material educativo curado.'],
         ['Informe médico', 'app/report.tsx + utils/reportData.ts', 'Informe PDF de 30 / 60 / 90 días.'],
@@ -564,7 +564,7 @@ function userFlows() {
     numbered('Slide educativo: cuándo y cómo registrar una crisis activa.'),
     numbered('Selección de hora para la notificación diaria de check-in (7, 8, 9, 10, 12, 18 o 20 h, o personalizada).'),
     numbered('Permiso de notificaciones (recordatorio diario).'),
-    numbered('Permiso de micrófono (modo voz opcional).'),
+    numbered('Permiso de micrófono (necesario para el modo crisis por voz).'),
     numbered('Primer check-in guiado.'),
     p('Implementado en app/onboarding.tsx. La hora de notificación se persiste con AsyncStorage y se programa vía utils/notifications.ts.'),
     screenshotPlaceholder(
@@ -600,8 +600,10 @@ function userFlows() {
     // 3.3 Crisis visual
     h2('3.3 Registro de crisis – modo visual'),
     p(
-      'Cuando el paciente pulsa “Me duele la cabeza” desde la pantalla de inicio, la app ofrece ' +
-        'dos modos de registro. El modo visual es un formulario completo para registrar un episodio activo: ' +
+      'Al pulsar “Me duele la cabeza” en la pantalla de inicio, la app intenta abrir primero el ' +
+        'registro por voz (sección 3.4). Si el reconocimiento de voz no está disponible en el ' +
+        'dispositivo (p. ej. Expo Go) o el paciente deniega el permiso de micrófono, la app pasa ' +
+        'automáticamente al modo visual: un formulario completo para registrar un episodio activo: ' +
         'hora de inicio, intensidad actual, características, presencia de aura, síntomas asociados, ' +
         'desencadenantes identificados, medicación tomada y si acudió a un centro sanitario.',
     ),
@@ -618,11 +620,12 @@ function userFlows() {
     // 3.4 Crisis voz
     h2('3.4 Registro de crisis – modo voz'),
     p(
-      'Durante una crisis con fotofobia o fonofobia, mirar una pantalla puede ser intolerable. El ' +
-        'modo voz está pensado para ese escenario: la pantalla permanece casi negra, la app lee cada ' +
-        'pregunta por TTS (Text-to-Speech), escucha la respuesta del paciente mediante reconocimiento ' +
-        'de voz y confirma cada entrada con un patrón háptico distinto. El paciente puede completar ' +
-        'el registro con los ojos cerrados.',
+      'Este es el flujo por defecto al iniciar el registro de crisis desde la pantalla de inicio, ' +
+        'cuando hay módulo nativo de reconocimiento de voz y el permiso de micrófono está concedido. ' +
+        'Durante una crisis con fotofobia o fonofobia, mirar una pantalla puede ser intolerable; el ' +
+        'modo voz mantiene la pantalla casi negra, la app lee cada pregunta por TTS (Text-to-Speech), ' +
+        'escucha la respuesta mediante reconocimiento de voz y confirma cada entrada con un patrón ' +
+        'háptico distinto. El paciente puede completar el registro con los ojos cerrados.',
     ),
     bullet('Indicador visual mínimo: un único punto pulsante para quienes aún mantengan visión borrosa.'),
     bullet('Tres reintentos por pregunta; si no se reconoce la respuesta, se ofrece reformular la pregunta.'),
@@ -639,7 +642,7 @@ function userFlows() {
       'La pantalla de inicio es el cuadro de mando del paciente. Muestra, en este orden: (a) el ' +
         'score de migraña del último check-in con su lista de razones cumplidas y no cumplidas; ' +
         '(b) si el score es bajo, la zona de riesgo de cefalea por tensión como porcentaje del umbral; ' +
-        '(c) botones de acceso rápido a check-in, registro de crisis e informe; y (d) una alerta modal ' +
+        '(c) botones de acceso rápido a check-in, registro de crisis (entrada por voz con desvío automático al formulario si no hay voz o permiso) e informe; y (d) una alerta modal ' +
         'emergente cuando se cumplen condiciones clínicas de preocupación (ver sección 7).',
     ),
     screenshotPlaceholder(
@@ -651,8 +654,8 @@ function userFlows() {
       'Modal con icono de advertencia, razones clínicas y acceso directo al informe.',
     ),
     screenshotPlaceholder(
-      'Inicio – Selector de modo de registro',
-      'Modal “¿Cómo quieres registrar?” con las opciones Modo Visual y Modo Voz.',
+      'Inicio – Registro de crisis',
+      'Botón “Me duele la cabeza” que abre el flujo por voz (o el formulario visual si voz no está disponible).',
     ),
 
     // 3.6 Diario
