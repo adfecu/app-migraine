@@ -4,9 +4,9 @@
  * Provides TTS prompts, speech recognition, and answer parsing
  * for a fully voice-driven crisis questionnaire.
  *
- * NOTE: expo-speech-recognition requires a dev build (native module).
- * All access is lazy-loaded so the module doesn't crash in Expo Go
- * when expo-router eagerly evaluates route files.
+ * NOTE: expo-speech-recognition is a native module — use a dev/client build
+ * (`expo run:ios` / EAS), not Expo Go. Module access is lazy-loaded via require()
+ * so Expo Go doesn't crash when the native binary isn't present.
  */
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
