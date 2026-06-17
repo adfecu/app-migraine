@@ -33,7 +33,7 @@
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.twooceansinhealth.appmigraine"
+      "package": "com.twooceansinhealth.migrainetrack"
     },
     "web": {
       "bundler": "metro",
