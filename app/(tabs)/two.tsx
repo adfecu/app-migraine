@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 
 import { Text, View } from '@/components/Themed';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { AnswerValue, CheckIn, deleteCheckIn, getAllCheckIns } from '@/utils/storage';
@@ -361,10 +362,12 @@ export default function DiarioScreen() {
     }
   }, []);
 
+  // The tabs can mount before the auth redirect; only read records once signed in.
+  const { session } = useAuth();
   useFocusEffect(
     useCallback(() => {
-      loadCheckIns();
-    }, [loadCheckIns])
+      if (session) loadCheckIns();
+    }, [session, loadCheckIns])
   );
 
   // Build markedDates object for the calendar

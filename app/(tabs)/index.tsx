@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { Modal, Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
   CheckIn,
@@ -96,10 +97,12 @@ export default function TabOneScreen() {
     }
   }, []);
 
+  // The tabs can mount before the auth redirect; only read records once signed in.
+  const { session } = useAuth();
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [loadData])
+      if (session) loadData();
+    }, [session, loadData])
   );
 
   const statusLabel = !latestCheckIn
