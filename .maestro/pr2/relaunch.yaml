@@ -1,0 +1,7 @@
+appId: com.twooceansinhealth.appmigraine
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 60000

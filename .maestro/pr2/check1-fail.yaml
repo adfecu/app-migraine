@@ -1,0 +1,12 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Run with the API paused: the save must fail visibly and keep the form open.
+- tapOn: "Finalizar"
+- assertVisible: "Guardando…"
+- extendedWaitUntil:
+    visible: "No se pudo guardar"
+    timeout: 30000
+- takeScreenshot: check1-error
+- tapOn: "OK"
+- runFlow: dismiss-dev-errors.yaml
+- assertVisible: "Finalizar"

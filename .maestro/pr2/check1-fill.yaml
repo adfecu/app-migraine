@@ -1,0 +1,11 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Fill a "no headache" check-in up to the final step.
+- tapOn: "Check-in"
+- tapOn: "No"
+- repeat:
+    while:
+      notVisible: "Finalizar"
+    commands:
+      - tapOn: "Siguiente"
+- assertVisible: "Finalizar"
