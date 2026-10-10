@@ -6,11 +6,19 @@ export function isLocalSupabaseUrl(url: string): boolean {
 }
 
 /**
- * Stops a release build that was bundled with a local Supabase URL, which
- * means a development .env file leaked into it. Failing at launch makes the
- * misconfiguration obvious before the build reaches users.
+ * Stops a build whose Supabase settings cannot work, with a message that says why:
+ * - no URL or anon key was bundled (EXPO_PUBLIC_* missing when the bundle was made);
+ * - a release build points at a local server, meaning a development .env file
+ *   leaked into it.
+ * Failing at launch makes the misconfiguration obvious before the build reaches users.
  */
-export function assertReleaseSupabaseUrl(url: string, isDevBuild: boolean): void {
+export function assertSupabaseConfig(url: string, anonKey: string, isDevBuild: boolean): void {
+  if (!url.trim() || !anonKey.trim()) {
+    throw new Error(
+      'This build has no Supabase configuration (EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY). ' +
+        'Set them for the EAS environment, or in .env.development.local for local development, and rebuild.',
+    );
+  }
   if (!isDevBuild && isLocalSupabaseUrl(url)) {
     throw new Error(
       `This release build points at a local Supabase server (${url}). ` +
