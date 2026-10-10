@@ -4,9 +4,12 @@ import { Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 import { createFetchWithTimeout } from './fetchWithTimeout';
+import { assertReleaseSupabaseUrl } from './supabaseConfig';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+assertReleaseSupabaseUrl(supabaseUrl, __DEV__);
 
 // Custom storage that handles SSR (server-side rendering) on web
 const customStorage = {
