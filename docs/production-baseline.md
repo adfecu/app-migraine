@@ -1,6 +1,8 @@
 # Production Baseline
 
-Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.063, us-east-2) using read-only Supabase CLI commands. Phase 0 of [the implementation plan](app-migraine-implementation-plan.md).
+Project is on the Supabase Free tier: no platform backups or leaked-password protection.
+
+Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.063, us-east-2) using read-only Supabase CLI commands. Changes applied the same day are marked "changed"; `supabase/config.toml` mirrors the production Auth, API, database, pooler and storage settings (`supabase config diff` is empty). Phase 0 of [the implementation plan](app-migraine-implementation-plan.md).
 
 ## Schema and functions
 
@@ -15,15 +17,15 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 
 | Setting | Value |
 | --- | --- |
-| Email confirmation | **Disabled** |
+| Email confirmation | **Disabled** (kept off by decision) |
 | Signup | Enabled (email); anonymous and SMS disabled |
-| Minimum password length | 6, no character requirements |
-| Leaked-password protection | **Disabled** (security advisor) |
-| Site URL | `http://localhost:3000` |
+| Minimum password length | 8, no character requirements (changed from 6; the app additionally requires 2 digits and a symbol) |
+| Leaked-password protection | **Disabled** (security advisor); requires Pro, project is on Free |
+| Site URL | `appmigraine://` (changed from `http://localhost:3000`) |
 | Redirect allowlist | `appmigraine://**` |
 | JWT expiry | 3600 s |
 | Refresh token rotation | Enabled, 10 s reuse interval |
-| Secure password change | Disabled |
+| Secure password change | Enabled (changed) |
 | Email OTP | 8 digits, 3600 s expiry, 1 email/min |
 | TOTP MFA | Enroll and verify enabled (not used by the app) |
 | Session timebox / inactivity timeout | Not set |
@@ -31,13 +33,13 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 ## API and network
 
 - Exposed schemas: `public`, `graphql_public`. Max rows per request: **1000**.
-- SSL enforcement for direct database connections: **disabled**.
-- Database network restrictions: none (`0.0.0.0/0`, `::/0`).
+- SSL enforcement for direct database connections: enabled (changed from disabled).
+- Database network restrictions: none (`0.0.0.0/0`, `::/0`). Only the Supabase CLI connects directly; the app uses the HTTP APIs.
 
 ## Backups
 
 - `backups list`: **no backups available**. WAL-G enabled; PITR disabled.
-- A restore rehearsal is therefore not possible from platform backups. A logical dump is needed before any production data repair.
+- A restore rehearsal is therefore not possible from platform backups. A logical dump is needed before any production data repair (deferred by decision).
 
 ## Advisors
 
@@ -47,5 +49,4 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 ## Not captured
 
 - Distributed app versions (App Store Connect / Play Console / EAS).
-- Subscription tier (determines leaked-password protection and backup availability).
 - EAS environment variables.
