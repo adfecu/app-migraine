@@ -31,6 +31,5 @@ jobs:
       - run: npx supabase db start
       - name: Check generated types are up to date
         run: |
-          # PostgrestVersion differs between the local stack and production, so it is ignored.
-          npx supabase gen types typescript --local --schema public > /tmp/database.ts
-          diff <(grep -v PostgrestVersion types/database.ts) <(grep -v PostgrestVersion /tmp/database.ts)
+          npm run db:types
+          git diff --exit-code types/database.ts
