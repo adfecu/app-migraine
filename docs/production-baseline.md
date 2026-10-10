@@ -6,12 +6,16 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 
 ## Schema and functions
 
-- Migration history: `001`, `002`, `20260218174106` applied remotely and present in Git. `001` and `002` were applied outside the CLI and registered with `migration repair` on 10 October 2026.
-- Live tables, columns, constraints, indexes, RLS flags, 16 policies, 3 triggers, and `update_updated_at_column` match those three migrations. No undocumented objects in `public`.
-- Table grants: `anon`, `authenticated`, and `service_role` hold all privileges, including TRUNCATE, REFERENCES, and TRIGGER (Supabase defaults; Phase 1 revokes them).
-- Edge Function `delete-user`: version 1, `verify_jwt = true`, source identical to `supabase/functions/delete-user/index.ts`.
+- Migration history: `001`, `002`, `20260218174106`, `20261010230440` applied remotely and present in Git. `001` and `002` were applied outside the CLI and registered with `migration repair` on 10 October 2026; `20261010230440_harden_table_access` was applied with `db push` the same day (changed).
+- Live tables, columns, constraints, indexes, RLS flags, 16 policies, 3 triggers, and `update_updated_at_column` match the migrations. No undocumented objects in `public`.
+- Table grants (changed): `anon` has none; `authenticated` has SELECT, INSERT, UPDATE, DELETE; `service_role` keeps all privileges. Before Phase 1, `anon` and `authenticated` also held every privilege, including TRUNCATE, REFERENCES, and TRIGGER.
+- Default privileges for tables and sequences created by `postgres` in `public` (changed): no grants to `anon`; no TRUNCATE, REFERENCES, or TRIGGER for `authenticated`. Defaults for functions are unchanged (PUBLIC can execute new functions; there are no callable functions).
+- Policies (changed): the 16 ownership policies apply to `authenticated` only and use `(select auth.uid()) = user_id`; rules are otherwise unchanged. Rollback: `supabase/rollbacks/20261010230440_harden_table_access.down.sql`. Access is covered by `supabase/tests/database/access.test.sql`.
+- Role simulation after Phase 1: `anon` gets `permission denied` on every table; an unrelated signed-in user sees no rows; the sampled owner sees only their own rows (48 check-ins, 29 load rows, 33 training points, 1 profile), as before.
+- Edge Function `delete-user` (changed): version 2, `verify_jwt = true`, source identical to `supabase/functions/delete-user/index.ts`. Accepts POST only (version 1 deleted the account on any method), pins `supabase-js` 2.93.1, and returns sanitized errors.
 - Function secrets: only the platform defaults (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`).
-- App source contains no service-role key references. EAS environment variables were not inspected.
+- App source contains no service-role key references.
+- EAS environment variables: `development`, `preview`, and `production` all set `EXPO_PUBLIC_SUPABASE_URL` to this project and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to its active publishable key (matched by fingerprint). Each is defined at project and account (shared) scope with identical values. No service-role key is defined.
 
 ## Auth
 
@@ -43,10 +47,9 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 
 ## Advisors
 
-- Security: 1 warning, `auth_leaked_password_protection`.
-- Performance: 16 `auth_rls_initplan` warnings; 3 `unused_index` notices.
+- Security: 1 warning, `auth_leaked_password_protection` (requires Pro).
+- Performance: 3 `unused_index` notices, kept until real query plans justify removal. The 16 `auth_rls_initplan` warnings were resolved by `20261010230440` (changed).
 
 ## Not captured
 
 - Distributed app versions (App Store Connect / Play Console / EAS).
-- EAS environment variables.
