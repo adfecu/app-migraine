@@ -1,0 +1,14 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Development builds show a LogBox banner over the footer when an error is
+# logged. Open it and dismiss every entry so it cannot intercept taps.
+- runFlow:
+    when:
+      visible: ".*Error saving.*"
+    commands:
+      - tapOn: ".*Error saving.*"
+- repeat:
+    while:
+      visible: "Minimize"
+    commands:
+      - tapOn: "Dismiss"

@@ -19,6 +19,7 @@ type STTModule = {
   start: (opts: Record<string, any>) => void;
   stop: () => void;
   abort: () => void;
+  isRecognitionAvailable: () => boolean;
 };
 
 /** Lazy accessor for the native speech recognition module. Returns null in Expo Go (no dev build). */
@@ -33,10 +34,22 @@ function getSTT(): STTModule | null {
   }
 }
 
-/** True if speech recognition is available (requires dev build, not Expo Go) */
+/** True if speech recognition can be used (requires a dev build and an available recognizer) */
 export function isVoiceAvailable(): boolean {
-  return getSTT() !== null;
+  const stt = getSTT();
+  if (!stt) return false;
+  try {
+    return stt.isRecognitionAvailable();
+  } catch {
+    return false;
+  }
 }
+
+/** Errors after which listening again cannot succeed on this device. */
+const FATAL_RECOGNITION_ERRORS = ['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture'];
+
+/** Thrown by listenForSpeech when the recognizer is unavailable, so the flow can fall back to the form. */
+export class RecognitionUnavailableError extends Error {}
 
 import { AnswerValue } from '@/utils/storage';
 import { CRISIS_QUESTIONS } from '@/app/crisis';
@@ -144,17 +157,59 @@ const MEDICATION_KEYWORDS: KeywordMap = {
   aspirina: ['aspirina'],
 };
 
-const NEGATIVE_WORDS = ['no', 'nada', 'ninguno', 'ninguna', 'no sé', 'no se', 'nop', 'negativo'];
+/** Stored when a spoken answer is missing or not understood. Never replaced by a guess. */
+export const UNKNOWN_ANSWER = '';
+
+const NONE_WORDS = ['no', 'nada', 'ninguno', 'ninguna', 'nop', 'negativo', 'nel'];
+
+function normalizeSpeech(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Classifies a short negative reply using whole words.
+ * "no sé" means unknown; "no", "nada", "ninguno" mean none.
+ */
+export function classifyNegation(transcript: string): 'none' | 'unknown' | null {
+  const text = normalizeSpeech(transcript).trim();
+  if (!text || text.length >= 20) return null;
+  if (/\bno se\b/.test(text)) return 'unknown';
+  const words = text.split(/[^a-z]+/).filter(Boolean);
+  return words.some(w => NONE_WORDS.includes(w)) ? 'none' : null;
+}
+
+/**
+ * Combines an open-ended answer for a checkbox question.
+ * Silence, "no sé", and unrecognised descriptions are stored as unknown, not as "none".
+ */
+function combineKeywordAnswer(
+  keywordMap: KeywordMap,
+  noneValue: AnswerValue,
+  toAnswer: (matched: string[]) => AnswerValue = matched => matched,
+) {
+  return (subs: (string | number | boolean | null)[]): AnswerValue => {
+    const transcript = typeof subs[0] === 'string' ? subs[0] : '';
+    if (!transcript.trim()) return UNKNOWN_ANSWER;
+    const negation = classifyNegation(transcript);
+    if (negation === 'none') return noneValue;
+    if (negation === 'unknown') return UNKNOWN_ANSWER;
+    const matched = parseKeywords(transcript, keywordMap);
+    return matched.length > 0 ? toAnswer(matched) : UNKNOWN_ANSWER;
+  };
+}
+
+function exclusiveOption(options: { value: string; exclusive?: boolean }[] | undefined): AnswerValue {
+  const exclusive = (options ?? []).find(o => o.exclusive);
+  return exclusive ? [exclusive.value] : [];
+}
 
 /** Scan a transcript for known keywords and return matched option values */
 export function parseKeywords(text: string, keywordMap: KeywordMap): string[] {
-  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const lower = normalizeSpeech(text);
   const matched: string[] = [];
 
   for (const [value, keywords] of Object.entries(keywordMap)) {
-    const normalizedKeywords = keywords.map(k =>
-      k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    );
+    const normalizedKeywords = keywords.map(normalizeSpeech);
     if (normalizedKeywords.some(kw => lower.includes(kw))) {
       matched.push(value);
     }
@@ -239,7 +294,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               answerType: 'time_bucket' as VoiceAnswerType,
             },
           ],
-          combine: (subs) => (subs[0] as string) ?? new Date().toISOString(),
+          combine: (subs) => (typeof subs[0] === 'string' ? subs[0] : UNKNOWN_ANSWER),
         };
 
       // 2. Intensity – number 0-10
@@ -253,7 +308,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               answerType: 'number_0_10' as VoiceAnswerType,
             },
           ],
-          combine: (subs) => (typeof subs[0] === 'number' ? subs[0] : 5),
+          combine: (subs) => (typeof subs[0] === 'number' ? subs[0] : UNKNOWN_ANSWER),
         };
 
       // 3. Pain characteristics – open-ended keyword extraction
@@ -269,19 +324,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               listenTimeoutMs: 10000,
             },
           ],
-          combine: (subs) => {
-            const transcript = (subs[0] as string) ?? '';
-            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguna'];
-            }
-            const matched = parseKeywords(transcript, PAIN_CHAR_KEYWORDS);
-            if (matched.length === 0) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguna'];
-            }
-            return matched;
-          },
+          combine: combineKeywordAnswer(PAIN_CHAR_KEYWORDS, exclusiveOption(q.options)),
         };
 
       // 4. Aura – open-ended keyword extraction
@@ -297,13 +340,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               listenTimeoutMs: 10000,
             },
           ],
-          combine: (subs) => {
-            const transcript = (subs[0] as string) ?? '';
-            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
-              return [];
-            }
-            return parseKeywords(transcript, AURA_KEYWORDS);
-          },
+          combine: combineKeywordAnswer(AURA_KEYWORDS, []),
         };
 
       // 5. Symptoms – open-ended keyword extraction
@@ -319,19 +356,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               listenTimeoutMs: 10000,
             },
           ],
-          combine: (subs) => {
-            const transcript = (subs[0] as string) ?? '';
-            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguno'];
-            }
-            const matched = parseKeywords(transcript, SYMPTOM_KEYWORDS);
-            if (matched.length === 0) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguno'];
-            }
-            return matched;
-          },
+          combine: combineKeywordAnswer(SYMPTOM_KEYWORDS, exclusiveOption(q.options)),
         };
 
       // 6. Triggers – open-ended keyword extraction
@@ -352,19 +377,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               listenTimeoutMs: 10000,
             },
           ],
-          combine: (subs) => {
-            const transcript = (subs[0] as string) ?? '';
-            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguno'];
-            }
-            const matched = parseKeywords(transcript, triggerKeywords);
-            if (matched.length === 0) {
-              const exclusive = (q.options ?? []).find((o) => o.exclusive);
-              return exclusive ? [exclusive.value] : ['ninguno'];
-            }
-            return matched;
-          },
+          combine: combineKeywordAnswer(triggerKeywords, exclusiveOption(q.options)),
         };
       }
 
@@ -382,13 +395,11 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
             },
           ],
           combine: (subs) => {
-            const transcript = (subs[0] as string) ?? '';
-            if (NEGATIVE_WORDS.some(w => transcript.toLowerCase().includes(w)) && transcript.length < 20) {
-              return ['no'];
-            }
-            const matched = parseKeywords(transcript, MEDICATION_KEYWORDS);
-            if (matched.length === 0) return ['no'];
-            return ['si', ...matched];
+            const answer = combineKeywordAnswer(MEDICATION_KEYWORDS, ['no'], matched => ['si', ...matched])(subs);
+            // An unrecognised medication is still a medication: record "sí" without a name.
+            const transcript = typeof subs[0] === 'string' ? subs[0] : '';
+            if (answer === UNKNOWN_ANSWER && parseYesNo(transcript) === true) return ['si'];
+            return answer;
           },
         };
 
@@ -403,7 +414,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               answerType: 'yes_no' as VoiceAnswerType,
             },
           ],
-          combine: (subs) => (subs[0] === true ? 'yes' : 'no'),
+          combine: (subs) => (subs[0] === true ? 'yes' : subs[0] === false ? 'no' : UNKNOWN_ANSWER),
         };
 
       // Fallback for any unexpected question
@@ -417,7 +428,7 @@ function buildVoiceQuestions(userSex: 'male' | 'female' | null = null): VoiceQue
               answerType: 'yes_no' as VoiceAnswerType,
             },
           ],
-          combine: (subs) => (subs[0] === true ? 'yes' : 'no'),
+          combine: (subs) => (subs[0] === true ? 'yes' : subs[0] === false ? 'no' : UNKNOWN_ANSWER),
         };
     }
   });
@@ -526,14 +537,51 @@ export async function requestVoicePermissions(): Promise<boolean> {
 }
 
 /**
+ * Briefly starts recognition to find out whether it can run at all.
+ * isRecognitionAvailable() can report true when the service then refuses to
+ * start (e.g. the iOS simulator), so this fails fast on a fatal error and
+ * otherwise passes after the probe window.
+ */
+export function probeRecognizer(windowMs: number = 1200): Promise<boolean> {
+  const stt = getSTT();
+  if (!stt) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (usable: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      errorSub.remove();
+      try {
+        stt.abort();
+      } catch { /* ignore */ }
+      resolve(usable);
+    };
+
+    const errorSub = stt.addListener('error', (event: any) => {
+      if (FATAL_RECOGNITION_ERRORS.includes(event.error)) finish(false);
+    });
+    const timer = setTimeout(() => finish(true), windowMs);
+
+    try {
+      stt.start({ lang: 'es-MX', interimResults: false, continuous: false });
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+/**
  * Listen for speech and return the final transcript.
  * Resolves with the best transcript string, or null on timeout / no speech.
+ * Rejects with RecognitionUnavailableError when the recognizer cannot be used.
  */
 export function listenForSpeech(timeoutMs: number = 7000): Promise<string | null> {
   const stt = getSTT();
-  if (!stt) return Promise.resolve(null);
+  if (!stt) return Promise.reject(new RecognitionUnavailableError('Speech recognition module missing'));
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let resolved = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -560,6 +608,13 @@ export function listenForSpeech(timeoutMs: number = 7000): Promise<string | null
 
     const errorSub = stt.addListener('error', (event: any) => {
       console.warn('Speech recognition error:', event.error, event.message);
+      if (FATAL_RECOGNITION_ERRORS.includes(event.error)) {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        reject(new RecognitionUnavailableError(event.error));
+        return;
+      }
       finish(null);
     });
 

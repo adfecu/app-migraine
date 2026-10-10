@@ -36,7 +36,9 @@ export default function ResetPasswordScreen() {
   const { updatePassword } = useAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const url = Linking.useURL();
+  // useLinkingURL also returns a link that arrived while the app was running;
+  // useURL misses it because this screen mounts after the link event fires.
+  const url = Linking.useLinkingURL();
 
   useEffect(() => {
     if (!url) return;

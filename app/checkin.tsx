@@ -7,6 +7,7 @@ import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'r
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useGuardedSave } from '@/components/useGuardedSave';
 import Colors from '@/constants/Colors';
 import { AnswerValue, getUserSex, saveCheckIn } from '@/utils/storage';
 
@@ -218,10 +219,8 @@ function getDefaultAnswer(question: Question): AnswerValue | null {
       return ''; // Empty string = no selection
     case 'slider':
     case 'slider_labeled':
-      // Return middle value as default so sliders are active from the start
-      const min = question.sliderMin ?? 0;
-      const max = question.sliderMax ?? 10;
-      return Math.round((min + max) / 2);
+      // No preselection: a value counts only once the user sets it.
+      return null;
     case 'multiple_choice':
       return ''; // Empty string = no selection
     case 'checkbox':
@@ -246,7 +245,8 @@ function isAnswerValid(question: Question, answer: AnswerValue | null | undefine
       return answer !== ''; // Must have selected yes or no
     case 'slider':
     case 'slider_labeled':
-      return typeof answer === 'number';
+      // '' means the user chose "Prefiero no responder".
+      return typeof answer === 'number' || answer === '';
     case 'multiple_choice':
       return answer !== '';
     case 'checkbox':
@@ -374,8 +374,9 @@ function YesNoWithText({ value, onChange, colorScheme }: YesNoWithTextProps) {
 
 // Labeled Slider Component
 interface LabeledSliderProps {
-  value: number | null;
-  onChange: (value: number) => void;
+  /** null: untouched; '': explicitly skipped; number: chosen value */
+  value: number | '' | null;
+  onChange: (value: number | '') => void;
   min: number;
   max: number;
   labels?: { range: [number, number]; label: string }[];
@@ -384,9 +385,10 @@ interface LabeledSliderProps {
 
 function LabeledSlider({ value, onChange, min, max, labels, colorScheme }: LabeledSliderProps) {
   const tint = Colors[colorScheme ?? 'light'].tint;
-  const hasValue = value !== null;
-  // Use middle value for initial slider position but don't count as selected
-  const displayValue = value ?? Math.round((min + max) / 2);
+  const hasValue = typeof value === 'number';
+  const skipped = value === '';
+  // The thumb rests in the middle, but that position is not an answer until touched.
+  const displayValue = hasValue ? value : Math.round((min + max) / 2);
   
   const getCurrentLabel = () => {
     if (!labels || !hasValue) return null;
@@ -415,7 +417,7 @@ function LabeledSlider({ value, onChange, min, max, labels, colorScheme }: Label
               )}
             </>
           ) : (
-            <Text style={[styles.sliderValue, { opacity: 0.4 }]}>—</Text>
+            <Text style={[styles.sliderValue, { opacity: 0.4 }]}>{skipped ? 'Sin respuesta' : '—'}</Text>
           )}
         </View>
         <Text style={styles.sliderLabel}>{max}</Text>
@@ -435,13 +437,22 @@ function LabeledSlider({ value, onChange, min, max, labels, colorScheme }: Label
         maximumValue={max}
         value={displayValue}
         onValueChange={(v) => onChange(Math.round(v))}
+        // Touching the thumb without moving it selects the value shown.
+        onSlidingStart={() => {
+          if (!hasValue) onChange(displayValue);
+        }}
         minimumTrackTintColor={hasValue ? tint : (colorScheme === 'dark' ? '#555' : '#ddd')}
         maximumTrackTintColor={colorScheme === 'dark' ? '#555' : '#ddd'}
         thumbTintColor={hasValue ? tint : (colorScheme === 'dark' ? '#888' : '#bbb')}
       />
-      {!hasValue && (
+      {!hasValue && !skipped && (
         <Text style={styles.sliderHint}>Desliza para seleccionar</Text>
       )}
+      <Pressable accessibilityRole="button" onPress={() => onChange('')} style={styles.sliderSkip}>
+        <Text style={[styles.sliderHint, skipped && { color: tint, fontWeight: '600' }]}>
+          Prefiero no responder
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -860,6 +871,7 @@ export default function CheckinScreen() {
       });
   }, [answers, userSex]);
 
+  const { saving, save } = useGuardedSave();
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;
   const currentQuestion = activeQuestions[currentStep];
@@ -875,8 +887,8 @@ export default function CheckinScreen() {
   };
 
   const handleNext = async () => {
-    // Validate current answer before proceeding
-    if (!isCurrentAnswerValid) {
+    // Validate current answer before proceeding; ignore taps while a save is in flight
+    if (!isCurrentAnswerValid || saving) {
       return;
     }
     
@@ -891,8 +903,10 @@ export default function CheckinScreen() {
         }
         return answer;
       }) as AnswerValue[];
-      await saveCheckIn(answerValues, questionTexts);
-      router.back();
+      // Only leave once the save succeeded; on failure the answers stay on screen.
+      if (await save(() => saveCheckIn(answerValues, questionTexts))) {
+        router.back();
+      }
     } else {
       setCurrentStep(currentStep + 1);
     }
@@ -942,7 +956,7 @@ export default function CheckinScreen() {
       case 'slider_labeled':
         return (
           <LabeledSlider
-            value={currentAnswer as number | null}
+            value={currentAnswer as number | '' | null}
             onChange={updateAnswer}
             min={currentQuestion.sliderMin ?? 0}
             max={currentQuestion.sliderMax ?? 10}
@@ -1039,12 +1053,12 @@ export default function CheckinScreen() {
       <View style={styles.footer}>
         <Pressable
           onPress={handleNext}
-          disabled={!isCurrentAnswerValid}
+          disabled={!isCurrentAnswerValid || saving}
           style={({ pressed }) => [
             styles.nextButton,
             { backgroundColor: Colors[colorScheme ?? 'light'].tint },
             pressed && isCurrentAnswerValid && styles.nextButtonPressed,
-            !isCurrentAnswerValid && styles.nextButtonDisabled,
+            (!isCurrentAnswerValid || saving) && styles.nextButtonDisabled,
           ]}
         >
           <Text style={[
@@ -1052,7 +1066,7 @@ export default function CheckinScreen() {
             { color: colorScheme === 'dark' ? '#000' : '#fff' },
             !isCurrentAnswerValid && styles.nextButtonTextDisabled,
           ]}>
-            {isLastStep ? 'Finalizar' : 'Siguiente'}
+            {saving ? 'Guardando…' : isLastStep ? 'Finalizar' : 'Siguiente'}
           </Text>
         </Pressable>
       </View>
@@ -1333,6 +1347,12 @@ const styles = StyleSheet.create({
   },
   nextButtonTextDisabled: {
     opacity: 0.8,
+  },
+  sliderSkip: {
+    alignSelf: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   sliderHint: {
     textAlign: 'center',

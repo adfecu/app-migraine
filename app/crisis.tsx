@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { useGuardedSave } from '@/components/useGuardedSave';
 import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
 
 // Question types
@@ -134,9 +135,8 @@ function getDefaultAnswer(question: Question): AnswerValue | null {
       return '';
     case 'slider':
     case 'slider_labeled':
-      const min = question.sliderMin ?? 0;
-      const max = question.sliderMax ?? 10;
-      return Math.round((min + max) / 2);
+      // No preselection: a value counts only once the user sets it.
+      return null;
     case 'multiple_choice':
       return '';
     case 'checkbox':
@@ -161,7 +161,8 @@ function isAnswerValid(question: Question, answer: AnswerValue | null | undefine
       return answer !== '';
     case 'slider':
     case 'slider_labeled':
-      return typeof answer === 'number';
+      // '' means the user chose "Prefiero no responder".
+      return typeof answer === 'number' || answer === '';
     case 'multiple_choice':
       return answer !== '';
     case 'checkbox':
@@ -288,16 +289,19 @@ function YesNoWithText({ value, onChange }: YesNoWithTextProps) {
 
 // Labeled Slider Component
 interface LabeledSliderProps {
-  value: number | null;
-  onChange: (value: number) => void;
+  /** null: untouched; '': explicitly skipped; number: chosen value */
+  value: number | '' | null;
+  onChange: (value: number | '') => void;
   min: number;
   max: number;
   labels?: { range: [number, number]; label: string }[];
 }
 
 function LabeledSlider({ value, onChange, min, max, labels }: LabeledSliderProps) {
-  const hasValue = value !== null;
-  const displayValue = value ?? Math.round((min + max) / 2);
+  const hasValue = typeof value === 'number';
+  const skipped = value === '';
+  // The thumb rests in the middle, but that position is not an answer until touched.
+  const displayValue = hasValue ? value : Math.round((min + max) / 2);
 
   const getCurrentLabel = () => {
     if (!labels || !hasValue) return null;
@@ -326,7 +330,7 @@ function LabeledSlider({ value, onChange, min, max, labels }: LabeledSliderProps
               )}
             </>
           ) : (
-            <Text style={[styles.sliderValue, { opacity: 0.4 }]}>—</Text>
+            <Text style={[styles.sliderValue, { opacity: 0.4 }]}>{skipped ? 'Sin respuesta' : '—'}</Text>
           )}
         </View>
         <Text style={styles.sliderLabel}>{max}</Text>
@@ -346,13 +350,22 @@ function LabeledSlider({ value, onChange, min, max, labels }: LabeledSliderProps
         maximumValue={max}
         value={displayValue}
         onValueChange={(v) => onChange(Math.round(v))}
+        // Touching the thumb without moving it selects the value shown.
+        onSlidingStart={() => {
+          if (!hasValue) onChange(displayValue);
+        }}
         minimumTrackTintColor={hasValue ? DARK_COLORS.accent : '#555'}
         maximumTrackTintColor="#555"
         thumbTintColor={hasValue ? DARK_COLORS.accent : '#888'}
       />
-      {!hasValue && (
+      {!hasValue && !skipped && (
         <Text style={styles.sliderHint}>Desliza para seleccionar</Text>
       )}
+      <Pressable accessibilityRole="button" onPress={() => onChange('')} style={styles.sliderSkip}>
+        <Text style={[styles.sliderHint, skipped && { color: DARK_COLORS.accent, fontWeight: '600' }]}>
+          Prefiero no responder
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -750,6 +763,7 @@ export default function CrisisScreen() {
     });
   }, [userSex]);
 
+  const { saving, save } = useGuardedSave();
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;
   const currentQuestion = activeQuestions[currentStep];
@@ -765,7 +779,8 @@ export default function CrisisScreen() {
   };
 
   const handleNext = async () => {
-    if (!isCurrentAnswerValid) {
+    // Ignore taps while a save is in flight
+    if (!isCurrentAnswerValid || saving) {
       return;
     }
 
@@ -778,8 +793,10 @@ export default function CrisisScreen() {
         }
         return answer;
       }) as AnswerValue[];
-      await saveCrisisEpisode(answerValues, questionTexts);
-      router.back();
+      // Only leave once the save succeeded; on failure the answers stay on screen.
+      if (await save(() => saveCrisisEpisode(answerValues, questionTexts))) {
+        router.back();
+      }
     } else {
       setCurrentStep(currentStep + 1);
     }
@@ -827,7 +844,7 @@ export default function CrisisScreen() {
       case 'slider_labeled':
         return (
           <LabeledSlider
-            value={currentAnswer as number | null}
+            value={currentAnswer as number | '' | null}
             onChange={updateAnswer}
             min={currentQuestion.sliderMin ?? 0}
             max={currentQuestion.sliderMax ?? 10}
@@ -916,18 +933,18 @@ export default function CrisisScreen() {
       <View style={styles.footer}>
         <Pressable
           onPress={handleNext}
-          disabled={!isCurrentAnswerValid}
+          disabled={!isCurrentAnswerValid || saving}
           style={({ pressed }) => [
             styles.nextButton,
             pressed && isCurrentAnswerValid && styles.nextButtonPressed,
-            !isCurrentAnswerValid && styles.nextButtonDisabled,
+            (!isCurrentAnswerValid || saving) && styles.nextButtonDisabled,
           ]}
         >
           <Text style={[
             styles.nextButtonText,
             !isCurrentAnswerValid && styles.nextButtonTextDisabled,
           ]}>
-            {isLastStep ? 'Finalizar' : 'Siguiente'}
+            {saving ? 'Guardando…' : isLastStep ? 'Finalizar' : 'Siguiente'}
           </Text>
         </Pressable>
       </View>
@@ -1076,6 +1093,12 @@ const styles = StyleSheet.create({
   slider: {
     width: '100%',
     height: 40,
+  },
+  sliderSkip: {
+    alignSelf: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   sliderHint: {
     textAlign: 'center',

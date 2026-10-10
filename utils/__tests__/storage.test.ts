@@ -112,6 +112,7 @@ describe('evaluateMigraine', () => {
     expect(result.score).toBe(50);
   });
 
+  // The dashboard no longer passes crisis entries here; it shows them separately.
   it('known defect: a severe crisis entry scores 0 because it lacks check-in wording', () => {
     const result = evaluateMigraine(crisis());
     expect(result).toMatchObject({ hadHeadache: false, score: 0, riskLevel: 'low' });
@@ -139,7 +140,7 @@ describe('shouldShowMigraineAlert', () => {
   it('alerts when the latest check-in meets criteria', () => {
     const alert = shouldShowMigraineAlert([fullMigraineCheckIn()]);
     expect(alert?.reasons).toEqual([
-      'Tu último check-in cumple los criterios clínicos de migraña (ICHD-3)',
+      'Tu último check-in reúne los rasgos de migraña de los criterios ICHD-3',
     ]);
   });
 
@@ -153,5 +154,18 @@ describe('shouldShowMigraineAlert', () => {
       crisis({ answers: [new Date().toISOString(), 2, [], []], endDate: new Date().toISOString() }),
     ]);
     expect(alert).toBeNull();
+  });
+});
+
+describe('shouldShowMigraineAlert wording', () => {
+  it('describes recorded headache days without classifying them as chronic', () => {
+    const days = Array.from({ length: 46 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return checkIn([[Q.headache, true]], d.toISOString());
+    });
+    const reasons = shouldShowMigraineAlert(days)?.reasons ?? [];
+    expect(reasons).toContain('Registraste 46 días con dolor de cabeza en los últimos 90 días');
+    expect(reasons.join(' ')).not.toMatch(/probabilidad|crónico/i);
   });
 });

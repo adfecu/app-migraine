@@ -1,0 +1,24 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Opened through a recovery link: the reset form must stay on screen instead of
+# redirecting to the tabs or showing the "use the email link" fallback.
+# Typing the new password is checked by hand: Maestro's input into iOS secure
+# fields did not reach onChangeText in this setup.
+- runFlow:
+    when:
+      visible: "Open"
+    commands:
+      - tapOn: "Open"
+# A development build opened by an outside link shows the dev-client launcher
+# first; picking the server forwards the link. Release builds skip this.
+- runFlow:
+    when:
+      visible: "DEVELOPMENT SERVERS"
+    commands:
+      - tapOn: "http://localhost:8081"
+- extendedWaitUntil:
+    visible: "Nueva Contraseña"
+    timeout: 20000
+- assertVisible: "Actualizar contraseña"
+- assertNotVisible: "Usa el enlace del correo para restablecer tu contraseña"
+- assertNotVisible: "Resumen del último check-in"

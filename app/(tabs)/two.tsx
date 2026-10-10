@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 
 import { Text, View } from '@/components/Themed';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { AnswerValue, CheckIn, deleteCheckIn, getAllCheckIns } from '@/utils/storage';
@@ -133,6 +134,9 @@ function toDateKey(isoString: string): string {
 
 // Format answer for display based on its type
 function formatAnswer(answer: AnswerValue): string {
+  if (answer === '') {
+    return 'Sin respuesta';
+  }
   if (typeof answer === 'boolean') {
     return answer ? 'Sí' : 'No';
   }
@@ -343,18 +347,27 @@ export default function DiarioScreen() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [episodeStats, setEpisodeStats] = useState<EpisodeStats>(DEFAULT_EPISODE_STATS);
+  const [loadError, setLoadError] = useState(false);
 
+  const loadCheckIns = useCallback(async () => {
+    try {
+      const data = await getAllCheckIns();
+      setEpisodeStats(calculateEpisodeStats(data));
+      // Show newest first
+      setCheckIns([...data].reverse());
+      setLoadError(false);
+    } catch {
+      // Keep the last loaded entries; an empty diary would wrongly imply no records.
+      setLoadError(true);
+    }
+  }, []);
+
+  // The tabs can mount before the auth redirect; only read records once signed in.
+  const { session } = useAuth();
   useFocusEffect(
     useCallback(() => {
-      const loadCheckIns = async () => {
-        const data = await getAllCheckIns();
-        const stats = calculateEpisodeStats(data);
-        setEpisodeStats(stats);
-        // Show newest first
-        setCheckIns([...data].reverse());
-      };
-      loadCheckIns();
-    }, [])
+      if (session) loadCheckIns();
+    }, [session, loadCheckIns])
   );
 
   // Build markedDates object for the calendar
@@ -517,6 +530,14 @@ export default function DiarioScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
+        {loadError && (
+          <Pressable onPress={loadCheckIns} style={styles.loadErrorBanner}>
+            <Text style={styles.loadErrorText}>
+              No se pudieron cargar tus registros. Lo que ves puede no estar actualizado. Toca para reintentar.
+            </Text>
+          </Pressable>
+        )}
+
         {/* Episode Summary */}
         <View style={styles.episodeSummaryContainer}>
           <Text style={styles.episodeSummaryTitle}>Resumen de Episodios</Text>
@@ -616,6 +637,17 @@ export default function DiarioScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadErrorBanner: {
+    borderWidth: 1,
+    borderColor: '#FF9500',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  loadErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   container: {
     flex: 1,
   },

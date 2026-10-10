@@ -1,0 +1,11 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Run with the API back: rapid taps must save once and close the form.
+- runFlow: dismiss-dev-errors.yaml
+- tapOn:
+    text: "Finalizar"
+    repeat: 3
+    delay: 50
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 20000

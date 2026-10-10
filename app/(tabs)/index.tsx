@@ -4,15 +4,12 @@ import React, { useCallback, useState } from 'react';
 import { Modal, Pressable, View as RNView, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
-  calculateHeadacheRisk,
-  checkAndResetCLIfHeadacheResolved,
   CheckIn,
   evaluateMigraine,
   getAllCheckIns,
-  getLatestCheckIn,
-  HeadacheRiskEvaluation,
   isMigraineAlertCooldownExpired,
   MigraineAlertData,
   MigraineEvaluation,
@@ -20,18 +17,12 @@ import {
   shouldShowMigraineAlert,
 } from '@/utils/storage';
 
-// Risk level colors
-const RISK_COLORS = {
-  low: '#4CAF50',      // Green
-  moderate: '#FFC107', // Yellow/Amber
-  high: '#F44336',     // Red
-};
-
-// Headache risk zone colors
-const HEADACHE_ZONE_COLORS = {
-  safe: '#4CAF50',     // Green
-  caution: '#FFC107',  // Yellow/Amber
-  danger: '#F44336',   // Red
+// Neutral status colors: the summary describes answers, it does not rate risk
+const STATUS_COLORS = {
+  none: '#8E8E93',
+  reported: '#5C6BC0',
+  crisis: '#FF3B30',
+  error: '#FF9500',
 };
 
 // Button colors for light and dark modes
@@ -55,12 +46,22 @@ const DEFAULT_EVALUATION: MigraineEvaluation = {
 };
 
 
+function formatEntryDate(isoString: string): string {
+  return new Date(isoString).toLocaleString('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function TabOneScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [latestCheckIn, setLatestCheckIn] = useState<CheckIn | null>(null);
+  const [activeCrisis, setActiveCrisis] = useState<CheckIn | null>(null);
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
-  const [hasCheckIn, setHasCheckIn] = useState(false);
-  const [headacheRisk, setHeadacheRisk] = useState<HeadacheRiskEvaluation | null>(null);
   const [showMigraineAlert, setShowMigraineAlert] = useState(false);
   const [migraineAlertData, setMigraineAlertData] = useState<MigraineAlertData | null>(null);
 
@@ -69,46 +70,49 @@ export default function TabOneScreen() {
     await setMigraineAlertDismissedAt();
   }, []);
 
+  // Read-only: opening the dashboard must never write model or health data.
+  const loadData = useCallback(async () => {
+    let allCheckIns: CheckIn[];
+    try {
+      allCheckIns = await getAllCheckIns();
+    } catch {
+      // Keep the last successful data on screen and flag it as possibly stale.
+      setLoadState('error');
+      return;
+    }
+
+    const newestFirst = [...allCheckIns].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+    const latestDaily = newestFirst.find(c => c.type === 'checkin') ?? null;
+    setLatestCheckIn(latestDaily);
+    setActiveCrisis(newestFirst.find(c => c.type === 'crisis' && !c.endDate) ?? null);
+    setEvaluation(latestDaily ? evaluateMigraine(latestDaily) : DEFAULT_EVALUATION);
+    setLoadState('ready');
+
+    const alertData = shouldShowMigraineAlert(allCheckIns);
+    if (alertData && await isMigraineAlertCooldownExpired()) {
+      setMigraineAlertData(alertData);
+      setShowMigraineAlert(true);
+    }
+  }, []);
+
+  // The tabs can mount before the auth redirect; only read records once signed in.
+  const { session } = useAuth();
   useFocusEffect(
     useCallback(() => {
-      const loadData = async () => {
-        // Load all check-ins for headache resolution check
-        const allCheckIns = await getAllCheckIns();
-        
-        // Check if headache has resolved and reset CL if needed
-        await checkAndResetCLIfHeadacheResolved(allCheckIns);
-        
-        // Load latest check-in for risk evaluation
-        const latestCheckIn = await getLatestCheckIn();
-        if (latestCheckIn && latestCheckIn.answers.length > 0) {
-          setHasCheckIn(true);
-          const result = evaluateMigraine(latestCheckIn);
-          setEvaluation(result);
-          
-          // Calculate headache risk (returns null if migraine risk is high)
-          const headacheRiskResult = await calculateHeadacheRisk(latestCheckIn);
-          setHeadacheRisk(headacheRiskResult);
-        } else {
-          setHasCheckIn(false);
-          setEvaluation(DEFAULT_EVALUATION);
-          setHeadacheRisk(null);
-        }
-
-        // Evaluate migraine alert conditions
-        const alertData = shouldShowMigraineAlert(allCheckIns);
-        if (alertData) {
-          const cooldownExpired = await isMigraineAlertCooldownExpired();
-          if (cooldownExpired) {
-            setMigraineAlertData(alertData);
-            setShowMigraineAlert(true);
-          }
-        }
-      };
-      loadData();
-    }, [])
+      if (session) loadData();
+    }, [session, loadData])
   );
 
-  const riskColor = RISK_COLORS[evaluation.riskLevel];
+  const statusLabel = !latestCheckIn
+    ? 'Sin check-in'
+    : !evaluation.hadHeadache
+      ? 'Sin dolor de cabeza reportado'
+      : evaluation.mayHaveMigraine
+        ? 'Rasgos compatibles con migraña'
+        : 'Dolor de cabeza registrado';
+  const statusColor = latestCheckIn && evaluation.hadHeadache ? STATUS_COLORS.reported : STATUS_COLORS.none;
   const isDark = colorScheme === 'dark';
   const checkinButtonColor = isDark ? BUTTON_COLORS.checkin.dark : BUTTON_COLORS.checkin.light;
   const crisisButtonColor = isDark ? BUTTON_COLORS.crisis.dark : BUTTON_COLORS.crisis.light;
@@ -119,111 +123,63 @@ export default function TabOneScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >        
-        {/* Migraine Score Display */}
+        {loadState === 'error' && (
+          <View style={[styles.banner, { borderColor: STATUS_COLORS.error }]}>
+            <Text style={styles.bannerText}>
+              No se pudieron cargar tus registros. Lo que ves puede no estar actualizado.
+            </Text>
+            <Pressable onPress={loadData} style={({ pressed }) => pressed && { opacity: 0.6 }}>
+              <Text style={[styles.bannerAction, { color: STATUS_COLORS.error }]}>Reintentar</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* An open crisis is shown on its own; it is never scored as a daily check-in */}
+        {activeCrisis && (
+          <View style={[styles.banner, { borderColor: STATUS_COLORS.crisis }]}>
+            <Text style={[styles.bannerTitle, { color: STATUS_COLORS.crisis }]}>Crisis en curso</Text>
+            <Text style={styles.bannerText}>
+              Registrada el {formatEntryDate(activeCrisis.date)}. Se cerrará cuando registres un
+              check-in sin dolor de cabeza.
+            </Text>
+          </View>
+        )}
+
+        {/* Latest daily check-in summary */}
         <View style={styles.scoreContainer}>
-          <Text style={styles.scoreLabel}>Riesgo de Migraña</Text>
-          <View style={[
-            styles.scoreCircle,
-            { borderColor: riskColor }
-          ]}>
-            <Text style={[styles.scoreValue, { color: riskColor }]}>
-              {evaluation.score}
-            </Text>
-            <Text style={styles.scoreMax}>/100</Text>
-          </View>
-          
-          {/* Status Pill */}
-          <View style={[
-            styles.statusPill,
-            { backgroundColor: evaluation.mayHaveMigraine ? RISK_COLORS.high : RISK_COLORS.low }
-          ]}>
-            <Text style={styles.statusText}>
-              {!hasCheckIn 
-                ? 'Sin check-in' 
-                : evaluation.mayHaveMigraine 
-                  ? 'Posible migraña' 
-                  : 'Probable no migraña'}
-            </Text>
-          </View>
-          
-          {/* Reasons */}
-          {hasCheckIn && (
+          <Text style={styles.scoreLabel}>Resumen del último check-in</Text>
+
+          {loadState === 'loading' && !latestCheckIn ? (
+            <Text style={styles.entryDate}>Cargando…</Text>
+          ) : (
+            <>
+              <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
+                <Text style={styles.statusText}>{statusLabel}</Text>
+              </View>
+              {latestCheckIn && (
+                <Text style={styles.entryDate}>Registrado el {formatEntryDate(latestCheckIn.date)}</Text>
+              )}
+            </>
+          )}
+
+          {latestCheckIn && evaluation.hadHeadache && (
             <View style={styles.reasonsContainer}>
               {evaluation.reasons.met.map((reason, index) => (
                 <View key={`met-${index}`} style={styles.reasonRow}>
-                  <Text style={[styles.reasonIcon, { color: RISK_COLORS.high }]}>✓</Text>
+                  <Text style={[styles.reasonIcon, { color: STATUS_COLORS.reported }]}>✓</Text>
                   <Text style={styles.reasonText}>{reason}</Text>
                 </View>
               ))}
               {evaluation.reasons.notMet.map((reason, index) => (
                 <View key={`notmet-${index}`} style={styles.reasonRow}>
-                  <Text style={[styles.reasonIcon, { color: RISK_COLORS.low }]}>✗</Text>
+                  <Text style={[styles.reasonIcon, { color: STATUS_COLORS.none }]}>–</Text>
                   <Text style={styles.reasonText}>{reason}</Text>
                 </View>
               ))}
             </View>
           )}
         </View>
-        
-        {/* Headache Risk Display - Only show when migraine risk is low */}
-        {hasCheckIn && headacheRisk && (
-          <>
-            <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-            
-            <View style={styles.headacheRiskContainer}>
-              <Text style={styles.headacheRiskTitle}>Riesgo de Dolor de Cabeza</Text>
 
-              {/* Score Circle */}
-              <View style={styles.scoreContainer}>
-                <View style={[
-                  styles.scoreCircle,
-                  { borderColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }
-                ]}>
-                  <Text style={[styles.scoreValue, { color: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }]}>
-                    {Math.round(headacheRisk.percentage)}
-                  </Text>
-                  <Text style={styles.scoreMax}>%</Text>
-                </View>
-
-                {/* Status Pill */}
-                <View style={[
-                  styles.statusPill,
-                  { backgroundColor: HEADACHE_ZONE_COLORS[headacheRisk.riskZone] }
-                ]}>
-                  <Text style={styles.statusText}>
-                    {headacheRisk.riskZone === 'safe'
-                      ? 'Zona Segura'
-                      : headacheRisk.riskZone === 'caution'
-                        ? 'Zona de Precaución'
-                        : 'Zona de Peligro'}
-                  </Text>
-                </View>
-
-                {/* Prediction Message */}
-                <Text style={styles.headachePredictionText}>
-                  {headacheRisk.prediction}
-                </Text>
-
-                {/* Reasons */}
-                <View style={styles.reasonsContainer}>
-                  {headacheRisk.reasons.met.map((reason, index) => (
-                    <View key={`met-${index}`} style={styles.reasonRow}>
-                      <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.danger }]}>✓</Text>
-                      <Text style={styles.reasonText}>{reason}</Text>
-                    </View>
-                  ))}
-                  {headacheRisk.reasons.notMet.map((reason, index) => (
-                    <View key={`notmet-${index}`} style={styles.reasonRow}>
-                      <Text style={[styles.reasonIcon, { color: HEADACHE_ZONE_COLORS.safe }]}>✗</Text>
-                      <Text style={styles.reasonText}>{reason}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </View>
-          </>
-        )}
-        
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.01)" />
         
         <Link href="/checkin" asChild>
@@ -265,15 +221,15 @@ export default function TabOneScreen() {
             onPress={dismissMigraineAlert}
           >
             <RNView style={styles.alertContent}>
-              <FontAwesome name="exclamation-triangle" size={40} color="#F44336" style={styles.alertIcon} />
+              <FontAwesome name="stethoscope" size={40} color={STATUS_COLORS.reported} style={styles.alertIcon} />
 
               <Text style={styles.alertTitle}>
-                Alerta: Alta Probabilidad de Migraña
+                Revisa tus registros con un médico
               </Text>
 
               <Text style={styles.alertBody}>
-                Según tus registros recientes, existe una alta probabilidad de que estés
-                experimentando migrañas. Te recomendamos consultar a un médico lo antes posible.
+                Tus registros recientes muestran lo siguiente. Te sugerimos compartir tu informe
+                con un profesional de salud.
               </Text>
 
               {migraineAlertData && migraineAlertData.reasons.length > 0 && (
@@ -368,24 +324,37 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginBottom: 10,
   },
-  scoreCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreValue: {
-    fontSize: 36,
-    fontWeight: 'bold',
-  },
-  scoreMax: {
-    fontSize: 14,
+  entryDate: {
+    marginTop: 8,
+    fontSize: 12,
     opacity: 0.6,
   },
+  banner: {
+    width: '100%',
+    maxWidth: 320,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+  },
+  bannerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  bannerText: {
+    fontSize: 13,
+    opacity: 0.85,
+    lineHeight: 18,
+  },
+  bannerAction: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   statusPill: {
-    marginTop: 16,
+    marginTop: 4,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
@@ -483,27 +452,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 16,
-  },
-  // Headache Risk Styles
-  headacheRiskContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  headacheRiskTitle: {
-    fontSize: 16,
-    opacity: 0.7,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  headachePredictionText: {
-    marginTop: 16,
-    fontSize: 13,
-    opacity: 0.8,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    lineHeight: 18,
-    maxWidth: 300,
   },
   // Migraine alert modal styles
   alertOverlay: {
