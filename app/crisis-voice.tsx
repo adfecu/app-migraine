@@ -45,7 +45,8 @@ type FlowState =
   | 'speaking'      // TTS is reading a prompt
   | 'listening'     // waiting for user speech
   | 'processing'    // parsing answer
-  | 'done';         // all questions answered, saving
+  | 'done'          // all questions answered, saving
+  | 'save_failed';  // save failed; answers kept for retry
 
 // ============================================================================
 // Pulsing dot component (subtle listening indicator)
@@ -119,6 +120,40 @@ export default function CrisisVoiceScreen() {
   const [flowState, setFlowState] = useState<FlowState>('init');
   const [statusText, setStatusText] = useState('Iniciando modo voz...');
   const abortRef = useRef(false);
+  const pendingRef = useRef<{ answers: AnswerValue[]; questions: string[] } | null>(null);
+  const savingRef = useRef(false);
+
+  // Confirms the save only after it succeeds; on failure the answers are kept for retry.
+  const saveAndFinish = useCallback(async () => {
+    const pending = pendingRef.current;
+    if (!pending || savingRef.current) return;
+    savingRef.current = true;
+    setFlowState('done');
+    setStatusText('Guardando...');
+
+    try {
+      await saveCrisisEpisode(pending.answers, pending.questions);
+    } catch (e) {
+      console.error('Error saving voice crisis:', e);
+      savingRef.current = false;
+      setFlowState('save_failed');
+      setStatusText('No se pudo guardar tu registro.');
+      await hapticWarning();
+      if (!abortRef.current) {
+        await speak('No pude guardar tu registro. Revisa tu conexión y toca reintentar.');
+      }
+      return;
+    }
+
+    pendingRef.current = null;
+    await hapticSuccess();
+    await speak('Listo, tu registro fue guardado. Descansa.');
+    await delay(1500);
+
+    if (!abortRef.current) {
+      router.back();
+    }
+  }, [router]);
 
   // Run the entire voice flow as an imperative async sequence
   const runFlow = useCallback(async () => {
@@ -177,23 +212,9 @@ export default function CrisisVoiceScreen() {
     // ------------------------------------------------------------------
     // 4. Save & finish
     // ------------------------------------------------------------------
-    setFlowState('done');
-    setStatusText('Guardando...');
-
-    try {
-      await saveCrisisEpisode(allAnswers, allQuestionTexts);
-    } catch (e) {
-      console.error('Error saving voice crisis:', e);
-    }
-
-    await hapticSuccess();
-    await speak('Listo, tu registro fue guardado. Descansa.');
-    await delay(1500);
-
-    if (!abortRef.current) {
-      router.back();
-    }
-  }, [router]);
+    pendingRef.current = { answers: allAnswers, questions: allQuestionTexts };
+    await saveAndFinish();
+  }, [router, saveAndFinish]);
 
   // Process a single VoiceQuestion (may contain multiple sub-prompts)
   async function processQuestion(vq: VoiceQuestion): Promise<AnswerValue> {
@@ -278,13 +299,31 @@ export default function CrisisVoiceScreen() {
   }, [router]);
 
   const isListening = flowState === 'listening';
+  const saveFailed = flowState === 'save_failed';
 
   return (
-    <Pressable style={styles.container} onPress={handleAbort}>
+    <Pressable style={styles.container} onPress={saveFailed ? undefined : handleAbort}>
       <View style={styles.content}>
         <PulsingDot active={isListening} />
         <Text style={styles.statusText}>{statusText}</Text>
-        <Text style={styles.hintText}>Toca en cualquier lugar para cancelar</Text>
+        {saveFailed ? (
+          <>
+            <Pressable
+              style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
+              onPress={saveAndFinish}
+            >
+              <Text style={styles.actionButtonText}>Reintentar</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.discardButton, pressed && { opacity: 0.7 }]}
+              onPress={handleAbort}
+            >
+              <Text style={styles.hintText}>Descartar registro</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Text style={styles.hintText}>Toca en cualquier lugar para cancelar</Text>
+        )}
       </View>
       <StatusBar style="light" />
     </Pressable>
@@ -318,6 +357,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 12,
+  },
+  actionButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    backgroundColor: '#e74c3c',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  discardButton: {
+    marginTop: 20,
+    padding: 8,
   },
   hintText: {
     color: 'rgba(255, 255, 255, 0.25)',
