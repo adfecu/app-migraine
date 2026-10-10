@@ -39,7 +39,7 @@ Captured 10 October 2026 from project `bnflsokqzaoxmwhzrpwv` (Postgres 17.6.1.06
 ## Backups
 
 - `backups list`: **no backups available**. WAL-G enabled; PITR disabled.
-- A restore rehearsal is therefore not possible from platform backups. A logical dump is needed before any production data repair (deferred by decision).
+- Logical backup taken 10 October 2026 18:14 UTC with `scripts/db_backup.py`: auth users and identities plus all app tables (6/6/1/55/34/33 rows), AES-256 encrypted with a passphrase held by the project owner, stored outside the repo. Restore not yet rehearsed.
 
 ## Advisors
 
