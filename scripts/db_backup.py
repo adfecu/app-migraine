@@ -40,13 +40,16 @@ DEFAULT_OUT = os.path.expanduser('~/app-migraine-backups')
 
 def query(sql):
     result = subprocess.run(
-        ['supabase', 'db', 'query', '--linked', '--output-format', 'json', sql],
+        ['supabase', 'db', 'query', '--linked', '--agent', 'no', '--output-format', 'json', sql],
         capture_output=True, text=True,
     )
     out = result.stdout
-    if result.returncode != 0 or '{' not in out:
+    starts = [i for i in (out.find('['), out.find('{')) if i >= 0]
+    if result.returncode != 0 or not starts:
         sys.exit(f'Query failed: {result.stderr.strip() or out.strip()}')
-    return json.loads(out[out.index('{'):])['rows']
+    data = json.loads(out[min(starts):])
+    # Plain terminals get a bare array; agent mode wraps rows in an object.
+    return data['rows'] if isinstance(data, dict) else data
 
 
 def fetch_bundle():
