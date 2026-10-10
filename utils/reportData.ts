@@ -616,7 +616,7 @@ ${
 
 <h2>Características de Migraña</h2>
 <div class="stat-row">
-  <div class="stat-item"><strong>${data.migrainePercentage}%</strong> episodios con alta probabilidad de migraña (score ≥70)</div>
+  <div class="stat-item"><strong>${data.migrainePercentage}%</strong> episodios con varios rasgos de migraña (puntuación de síntomas ≥70)</div>
 </div>
 <div class="stat-row">
   <div class="stat-item"><strong>${data.auraEpisodes}</strong> de ${data.totalCrisisForAura} crisis con aura</div>

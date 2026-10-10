@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,17 +33,22 @@ export default function ReportScreen() {
 
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [period, setPeriod] = useState<PeriodOption>(90);
 
   const loadReport = useCallback(async (days: PeriodOption) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const checkIns = await getAllCheckIns();
       const report = generateReportData(checkIns, days);
       setData(report);
     } catch (e) {
       console.error('Error generating report:', e);
+      // Never show "no data" when the records simply could not be loaded.
+      setData(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -61,6 +67,7 @@ export default function ReportScreen() {
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
     } catch (e) {
       console.error('Error sharing PDF:', e);
+      Alert.alert('No se pudo compartir', 'No se pudo crear o compartir el PDF. Inténtalo de nuevo.');
     } finally {
       setSharing(false);
     }
@@ -148,6 +155,17 @@ export default function ReportScreen() {
           <ActivityIndicator size="large" color={tint} />
           <Text style={styles.loadingText}>Generando informe...</Text>
         </View>
+      ) : loadError ? (
+        <View style={styles.centered}>
+          <FontAwesome name="exclamation-circle" size={48} color={isDark ? '#666' : '#888'} />
+          <Text style={styles.emptyTitle}>No se pudo generar el informe</Text>
+          <Text style={styles.emptySubtitle}>
+            No se pudieron cargar tus registros. Revisa tu conexión e inténtalo de nuevo.
+          </Text>
+          <Pressable onPress={() => loadReport(period)} style={({ pressed }) => pressed && { opacity: 0.6 }}>
+            <Text style={[styles.emptySubtitle, { color: tint, fontWeight: '600' }]}>Reintentar</Text>
+          </Pressable>
+        </View>
       ) : !data || data.totalCheckIns === 0 ? (
         <View style={styles.centered}>
           <FontAwesome name="file-text-o" size={48} color={isDark ? '#666' : '#888'} />
@@ -228,7 +246,7 @@ export default function ReportScreen() {
           <Card>
             <Text style={styles.cardStat}>
               <Text style={styles.cardStatBold}>{data.migrainePercentage}%</Text> episodios con
-              alta probabilidad de migraña
+              varios rasgos de migraña
             </Text>
             <Text style={[styles.cardStat, { marginTop: 6 }]}>
               <Text style={styles.cardStatBold}>{data.auraEpisodes}</Text> de{' '}

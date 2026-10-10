@@ -262,18 +262,17 @@ export default function OnboardingScreen() {
           </SlideShell>
         );
 
-      // ── Step 3: Riesgo & CL ──────────────────────────────────────────────────
+      // ── Step 3: Resumen e informe ──────────────────────────────────────────────────
       case STEP_SLIDE_RIESGO:
         return (
           <SlideShell>
             <Text style={s.icon}>📊</Text>
-            <Text style={s.title}>Riesgo y Carga Acumulada</Text>
+            <Text style={s.title}>Resumen e informe</Text>
             <Text style={s.body}>
-              La app calcula tu Carga Acumulada (CL) — un índice de estrés fisiológico —
-              y la compara con tu umbral personal.
+              La app resume los síntomas que registras y prepara un informe para compartir
+              con tu médico.
               {'\n\n'}
-              El umbral empieza en 75 y se ajusta automáticamente con el tiempo, aprendiendo
-              de los días en que reportas un dolor de cabeza sin migraña.
+              No es un diagnóstico y no predice cuándo tendrás dolor de cabeza.
             </Text>
             <PrimaryButton label="Siguiente" onPress={next} tint={tint} />
           </SlideShell>

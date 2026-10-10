@@ -223,6 +223,7 @@ export async function saveCrisisEpisode(answers: AnswerValue[], questions: strin
 
 /**
  * Gets all check-ins for the current user
+ * @throws if the user is not authenticated or the request fails
  */
 export async function getAllCheckIns(): Promise<CheckIn[]> {
   try {
@@ -240,8 +241,9 @@ export async function getAllCheckIns(): Promise<CheckIn[]> {
     
     return (data || []).map(rowToCheckIn);
   } catch (error) {
+    // Rethrow so screens can show a failure instead of an empty history.
     console.error('Error getting check-ins:', error);
-    return [];
+    throw error;
   }
 }
 
