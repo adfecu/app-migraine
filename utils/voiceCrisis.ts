@@ -19,6 +19,7 @@ type STTModule = {
   start: (opts: Record<string, any>) => void;
   stop: () => void;
   abort: () => void;
+  isRecognitionAvailable: () => boolean;
 };
 
 /** Lazy accessor for the native speech recognition module. Returns null in Expo Go (no dev build). */
@@ -33,10 +34,22 @@ function getSTT(): STTModule | null {
   }
 }
 
-/** True if speech recognition is available (requires dev build, not Expo Go) */
+/** True if speech recognition can be used (requires a dev build and an available recognizer) */
 export function isVoiceAvailable(): boolean {
-  return getSTT() !== null;
+  const stt = getSTT();
+  if (!stt) return false;
+  try {
+    return stt.isRecognitionAvailable();
+  } catch {
+    return false;
+  }
 }
+
+/** Errors after which listening again cannot succeed on this device. */
+const FATAL_RECOGNITION_ERRORS = ['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture'];
+
+/** Thrown by listenForSpeech when the recognizer is unavailable, so the flow can fall back to the form. */
+export class RecognitionUnavailableError extends Error {}
 
 import { AnswerValue } from '@/utils/storage';
 import { CRISIS_QUESTIONS } from '@/app/crisis';
@@ -526,12 +539,13 @@ export async function requestVoicePermissions(): Promise<boolean> {
 /**
  * Listen for speech and return the final transcript.
  * Resolves with the best transcript string, or null on timeout / no speech.
+ * Rejects with RecognitionUnavailableError when the recognizer cannot be used.
  */
 export function listenForSpeech(timeoutMs: number = 7000): Promise<string | null> {
   const stt = getSTT();
-  if (!stt) return Promise.resolve(null);
+  if (!stt) return Promise.reject(new RecognitionUnavailableError('Speech recognition module missing'));
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let resolved = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -558,6 +572,13 @@ export function listenForSpeech(timeoutMs: number = 7000): Promise<string | null
 
     const errorSub = stt.addListener('error', (event: any) => {
       console.warn('Speech recognition error:', event.error, event.message);
+      if (FATAL_RECOGNITION_ERRORS.includes(event.error)) {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        reject(new RecognitionUnavailableError(event.error));
+        return;
+      }
       finish(null);
     });
 

@@ -28,6 +28,7 @@ import {
   isVoiceAvailable,
   listenForSpeech,
   parseAnswer,
+  RecognitionUnavailableError,
   requestVoicePermissions,
   speak,
   stopSpeaking,
@@ -158,7 +159,7 @@ export default function CrisisVoiceScreen() {
   // Run the entire voice flow as an imperative async sequence
   const runFlow = useCallback(async () => {
     // ------------------------------------------------------------------
-    // 0. Check if voice is available (requires dev build, not Expo Go)
+    // 0. Check if voice is available (requires dev build, not Expo Go, and a usable recognizer)
     // ------------------------------------------------------------------
     if (!isVoiceAvailable()) {
       if (!abortRef.current) {
@@ -199,12 +200,23 @@ export default function CrisisVoiceScreen() {
     const allAnswers: AnswerValue[] = [];
     const allQuestionTexts: string[] = [];
 
-    for (const vq of voiceQuestions) {
-      if (abortRef.current) return;
+    try {
+      for (const vq of voiceQuestions) {
+        if (abortRef.current) return;
 
-      const answer = await processQuestion(vq);
-      allAnswers.push(answer);
-      allQuestionTexts.push(vq.questionText);
+        const answer = await processQuestion(vq);
+        allAnswers.push(answer);
+        allQuestionTexts.push(vq.questionText);
+      }
+    } catch (e) {
+      if (!(e instanceof RecognitionUnavailableError)) throw e;
+      // Retrying cannot help; hand over to the manual form instead of skipping every question.
+      stopSpeaking();
+      if (!abortRef.current) {
+        await speak('El reconocimiento de voz no está disponible. Abriendo el formulario.');
+        router.replace('/crisis');
+      }
+      return;
     }
 
     if (abortRef.current) return;
