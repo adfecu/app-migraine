@@ -132,7 +132,12 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'forgot-password' || segments[0] === 'reset-password';
+    // The recovery link creates a session before the user sets a new password,
+    // so reset-password must stay reachable with or without one. The screen
+    // navigates on its own once the password is updated.
+    if (segments[0] === 'reset-password') return;
+
+    const inAuthGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'forgot-password';
 
     if (!session && !inAuthGroup) {
       // Redirect to login if not authenticated
