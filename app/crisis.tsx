@@ -4,9 +4,10 @@ import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { useGuardedSave } from '@/components/useGuardedSave';
 import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
 
 // Question types
@@ -750,7 +751,7 @@ export default function CrisisScreen() {
     });
   }, [userSex]);
 
-  const [saving, setSaving] = useState(false);
+  const { saving, save } = useGuardedSave();
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;
   const currentQuestion = activeQuestions[currentStep];
@@ -780,19 +781,10 @@ export default function CrisisScreen() {
         }
         return answer;
       }) as AnswerValue[];
-      setSaving(true);
-      try {
-        await saveCrisisEpisode(answerValues, questionTexts);
-      } catch {
-        // Stay on the form with the answers intact; only leave once the save succeeded.
-        setSaving(false);
-        Alert.alert(
-          'No se pudo guardar',
-          'Tus respuestas siguen aquí. Revisa tu conexión e inténtalo de nuevo.',
-        );
-        return;
+      // Only leave once the save succeeded; on failure the answers stay on screen.
+      if (await save(() => saveCrisisEpisode(answerValues, questionTexts))) {
+        router.back();
       }
-      router.back();
     } else {
       setCurrentStep(currentStep + 1);
     }

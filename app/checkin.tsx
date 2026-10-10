@@ -3,10 +3,11 @@ import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useGuardedSave } from '@/components/useGuardedSave';
 import Colors from '@/constants/Colors';
 import { AnswerValue, getUserSex, saveCheckIn } from '@/utils/storage';
 
@@ -860,7 +861,7 @@ export default function CheckinScreen() {
       });
   }, [answers, userSex]);
 
-  const [saving, setSaving] = useState(false);
+  const { saving, save } = useGuardedSave();
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;
   const currentQuestion = activeQuestions[currentStep];
@@ -892,19 +893,10 @@ export default function CheckinScreen() {
         }
         return answer;
       }) as AnswerValue[];
-      setSaving(true);
-      try {
-        await saveCheckIn(answerValues, questionTexts);
-      } catch {
-        // Stay on the form with the answers intact; only leave once the save succeeded.
-        setSaving(false);
-        Alert.alert(
-          'No se pudo guardar',
-          'Tus respuestas siguen aquí. Revisa tu conexión e inténtalo de nuevo.',
-        );
-        return;
+      // Only leave once the save succeeded; on failure the answers stay on screen.
+      if (await save(() => saveCheckIn(answerValues, questionTexts))) {
+        router.back();
       }
-      router.back();
     } else {
       setCurrentStep(currentStep + 1);
     }
