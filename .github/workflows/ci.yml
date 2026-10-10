@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx supabase db start
+      - name: Run database access tests
+        run: npx supabase test db
       - name: Check generated types are up to date
         run: |
           npm run db:types
