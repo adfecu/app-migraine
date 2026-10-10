@@ -1,0 +1,32 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Sliders start without a value: Siguiente stays disabled until the user
+# touches the slider or chooses "Prefiero no responder".
+- runFlow: relaunch.yaml
+- tapOn: "Check-in"
+- tapOn: "No"
+- tapOn: "Siguiente"
+# Sleep (0-12): untouched shows no value and blocks progress.
+- assertVisible: "¿Cuántas horas dormiste anoche?"
+- assertVisible: "Desliza para seleccionar"
+- assertVisible:
+    text: "Siguiente"
+    enabled: false
+- takeScreenshot: check5-untouched
+# Touching the thumb at the midpoint selects 6.
+- tapOn:
+    point: "50%,57%"
+- assertNotVisible: "Desliza para seleccionar"
+- assertVisible: "6"
+- tapOn: "Siguiente"
+# Stress, alcohol, caffeine: explicitly skipped.
+- tapOn: "Prefiero no responder"
+- assertVisible: "Sin respuesta"
+- tapOn: "Siguiente"
+- tapOn: "Prefiero no responder"
+- tapOn: "Siguiente"
+- tapOn: "Prefiero no responder"
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 20000
