@@ -1,4 +1,4 @@
-import { assertReleaseSupabaseUrl, isLocalSupabaseUrl } from '../supabaseConfig';
+import { assertSupabaseConfig, isLocalSupabaseUrl } from '../supabaseConfig';
 
 describe('isLocalSupabaseUrl', () => {
   it.each([
@@ -20,16 +20,27 @@ describe('isLocalSupabaseUrl', () => {
   });
 });
 
-describe('assertReleaseSupabaseUrl', () => {
+describe('assertSupabaseConfig', () => {
+  const HOSTED = 'https://bnflsokqzaoxmwhzrpwv.supabase.co';
+
+  it.each([
+    ['', 'key'],
+    [HOSTED, ''],
+    ['  ', 'key'],
+  ])('blocks a build with missing settings (url=%j, key=%j)', (url, key) => {
+    expect(() => assertSupabaseConfig(url, key, false)).toThrow(/no Supabase configuration/);
+    expect(() => assertSupabaseConfig(url, key, true)).toThrow(/no Supabase configuration/);
+  });
+
   it('blocks a release build that points at a local server', () => {
-    expect(() => assertReleaseSupabaseUrl('http://127.0.0.1:54321', false)).toThrow(/local Supabase server/);
+    expect(() => assertSupabaseConfig('http://127.0.0.1:54321', 'key', false)).toThrow(/local Supabase server/);
   });
 
   it('allows local servers in development builds', () => {
-    expect(() => assertReleaseSupabaseUrl('http://127.0.0.1:54321', true)).not.toThrow();
+    expect(() => assertSupabaseConfig('http://127.0.0.1:54321', 'key', true)).not.toThrow();
   });
 
   it('allows hosted projects in release builds', () => {
-    expect(() => assertReleaseSupabaseUrl('https://bnflsokqzaoxmwhzrpwv.supabase.co', false)).not.toThrow();
+    expect(() => assertSupabaseConfig(HOSTED, 'key', false)).not.toThrow();
   });
 });

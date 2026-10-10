@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import type { ExpoConfig } from 'expo/config';
 
-// Local `eas build` runs `npx expo config` before upload; dashboard env applies on the worker.
-// Loading .env here ensures EXPO_PUBLIC_* exist for that step when you keep secrets in .env (gitignored).
+// EAS CLI reads this config on your machine before uploading; the dashboard env applies on the
+// worker. Values in .env / .env.local (gitignored) are picked up here when present.
 for (const name of ['.env', '.env.local'] as const) {
   const envPath = resolve(process.cwd(), name);
   if (existsSync(envPath)) {
@@ -13,23 +13,30 @@ for (const name of ['.env', '.env.local'] as const) {
   }
 }
 
-function assertSupabaseEnv(): void {
+function checkSupabaseEnv(): void {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
   const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
-  if (!url || !key) {
-    throw new Error(
-      'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. ' +
-        'Use a gitignored .env (or .env.local) in the project root for local commands including `eas build` (Expo reads app.config before the cloud worker). ' +
-        'For EAS, also set both in expo.dev → Project → Environment variables so release builds receive them on the builder.'
-    );
+  if (url && key) return;
+
+  const message =
+    'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. ' +
+    'Set both in expo.dev → Project → Environment variables for each EAS environment; ' +
+    'for local development use a gitignored .env.development.local.';
+
+  // EAS build workers bundle the app, so a missing value there must fail the build.
+  // Locally, commands such as `eas env:list` or `eas build` only read this config,
+  // and a bundle made without the values refuses to start (utils/supabaseConfig.ts).
+  if (process.env.EAS_BUILD === 'true') {
+    throw new Error(message);
   }
+  console.warn(`Warning: ${message}`);
 }
 
 /**
- * Dynamic layer over app.json: fails EAS/local configure when Supabase
- * public env is missing, so TestFlight never gets a bundle with empty URLs.
+ * Dynamic layer over app.json: fails EAS builds when Supabase public env is
+ * missing, so TestFlight never gets a bundle with empty URLs.
  */
 export default ({ config }: { config: ExpoConfig }): ExpoConfig => {
-  assertSupabaseEnv();
+  checkSupabaseEnv();
   return config;
 };
