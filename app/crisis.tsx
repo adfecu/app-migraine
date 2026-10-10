@@ -4,7 +4,7 @@ import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
@@ -750,6 +750,7 @@ export default function CrisisScreen() {
     });
   }, [userSex]);
 
+  const [saving, setSaving] = useState(false);
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === activeQuestions.length - 1;
   const currentQuestion = activeQuestions[currentStep];
@@ -765,7 +766,8 @@ export default function CrisisScreen() {
   };
 
   const handleNext = async () => {
-    if (!isCurrentAnswerValid) {
+    // Ignore taps while a save is in flight
+    if (!isCurrentAnswerValid || saving) {
       return;
     }
 
@@ -778,7 +780,18 @@ export default function CrisisScreen() {
         }
         return answer;
       }) as AnswerValue[];
-      await saveCrisisEpisode(answerValues, questionTexts);
+      setSaving(true);
+      try {
+        await saveCrisisEpisode(answerValues, questionTexts);
+      } catch {
+        // Stay on the form with the answers intact; only leave once the save succeeded.
+        setSaving(false);
+        Alert.alert(
+          'No se pudo guardar',
+          'Tus respuestas siguen aquí. Revisa tu conexión e inténtalo de nuevo.',
+        );
+        return;
+      }
       router.back();
     } else {
       setCurrentStep(currentStep + 1);
@@ -916,18 +929,18 @@ export default function CrisisScreen() {
       <View style={styles.footer}>
         <Pressable
           onPress={handleNext}
-          disabled={!isCurrentAnswerValid}
+          disabled={!isCurrentAnswerValid || saving}
           style={({ pressed }) => [
             styles.nextButton,
             pressed && isCurrentAnswerValid && styles.nextButtonPressed,
-            !isCurrentAnswerValid && styles.nextButtonDisabled,
+            (!isCurrentAnswerValid || saving) && styles.nextButtonDisabled,
           ]}
         >
           <Text style={[
             styles.nextButtonText,
             !isCurrentAnswerValid && styles.nextButtonTextDisabled,
           ]}>
-            {isLastStep ? 'Finalizar' : 'Siguiente'}
+            {saving ? 'Guardando…' : isLastStep ? 'Finalizar' : 'Siguiente'}
           </Text>
         </Pressable>
       </View>
