@@ -28,6 +28,7 @@ import {
   isVoiceAvailable,
   listenForSpeech,
   parseAnswer,
+  probeRecognizer,
   RecognitionUnavailableError,
   requestVoicePermissions,
   speak,
@@ -183,6 +184,16 @@ export default function CrisisVoiceScreen() {
       return;
     }
 
+    // Confirm the recognizer actually starts before speaking anything,
+    // so an unusable device goes straight to the form.
+    setStatusText('Preparando...');
+    if (!(await probeRecognizer())) {
+      if (!abortRef.current) {
+        router.replace('/crisis');
+      }
+      return;
+    }
+
     // ------------------------------------------------------------------
     // 2. Opening greeting
     // ------------------------------------------------------------------
@@ -213,7 +224,6 @@ export default function CrisisVoiceScreen() {
       // Retrying cannot help; hand over to the manual form instead of skipping every question.
       stopSpeaking();
       if (!abortRef.current) {
-        await speak('El reconocimiento de voz no está disponible. Abriendo el formulario.');
         router.replace('/crisis');
       }
       return;

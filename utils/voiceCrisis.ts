@@ -537,6 +537,42 @@ export async function requestVoicePermissions(): Promise<boolean> {
 }
 
 /**
+ * Briefly starts recognition to find out whether it can run at all.
+ * isRecognitionAvailable() can report true when the service then refuses to
+ * start (e.g. the iOS simulator), so this fails fast on a fatal error and
+ * otherwise passes after the probe window.
+ */
+export function probeRecognizer(windowMs: number = 1200): Promise<boolean> {
+  const stt = getSTT();
+  if (!stt) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (usable: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      errorSub.remove();
+      try {
+        stt.abort();
+      } catch { /* ignore */ }
+      resolve(usable);
+    };
+
+    const errorSub = stt.addListener('error', (event: any) => {
+      if (FATAL_RECOGNITION_ERRORS.includes(event.error)) finish(false);
+    });
+    const timer = setTimeout(() => finish(true), windowMs);
+
+    try {
+      stt.start({ lang: 'es-MX', interimResults: false, continuous: false });
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+/**
  * Listen for speech and return the final transcript.
  * Resolves with the best transcript string, or null on timeout / no speech.
  * Rejects with RecognitionUnavailableError when the recognizer cannot be used.
