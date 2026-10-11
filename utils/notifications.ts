@@ -1,4 +1,3 @@
-import { PermissionStatus } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
 
 let _handlerInstalled = false;
@@ -47,7 +46,7 @@ export async function requestNotificationPermissions(): Promise<Notifications.No
     } catch {
       // Last resort: return a properly typed denied status
       return {
-        status: PermissionStatus.DENIED as Notifications.PermissionStatus,
+        status: Notifications.PermissionStatus.DENIED,
         granted: false,
         expires: 'never' as const,
         canAskAgain: false,

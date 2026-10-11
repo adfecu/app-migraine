@@ -345,6 +345,7 @@ function LabeledSlider({ value, onChange, min, max, labels }: LabeledSliderProps
         </View>
       )}
       <Slider
+        accessibilityLabel="Seleccionar valor"
         style={[styles.slider, !hasValue && { opacity: 0.5 }]}
         minimumValue={min}
         maximumValue={max}

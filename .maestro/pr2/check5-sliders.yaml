@@ -13,7 +13,8 @@ appId: com.twooceansinhealth.appmigraine
     text: "Siguiente"
     enabled: false
 - takeScreenshot: check5-untouched
-# Touching the thumb at the midpoint selects 6.
+# Touching the thumb, which rests at the midpoint, selects 6. The native slider
+# is not exposed in the accessibility tree, so it is tapped by position.
 - tapOn:
     point: "50%,57%"
 - assertNotVisible: "Desliza para seleccionar"
