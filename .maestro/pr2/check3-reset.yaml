@@ -15,7 +15,9 @@ appId: com.twooceansinhealth.appmigraine
     when:
       visible: "DEVELOPMENT SERVERS"
     commands:
-      - tapOn: "http://localhost:8081"
+      - tapOn:
+          text: "http://.*:8081"
+          index: 0
 - extendedWaitUntil:
     visible: "Nueva Contraseña"
     timeout: 20000

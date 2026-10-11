@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "appmigraine",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -28,7 +27,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -47,7 +45,9 @@
         {
           "microphonePermission": "MigraineTrack necesita el micrófono para registrar crisis por voz durante un ataque.",
           "speechRecognitionPermission": "MigraineTrack usa reconocimiento de voz para guiarte en crisis sin mirar la pantalla.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ],
       "@react-native-community/datetimepicker",
