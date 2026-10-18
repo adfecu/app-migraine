@@ -17,7 +17,9 @@ import {
 } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
+import { encodeVoiceAnswer, type Answers, type FormValue } from '@/utils/answers';
+import { newClientId, RecordError, startEpisode } from '@/utils/records';
+import { getUserSex } from '@/utils/storage';
 import {
   abortRecognition,
   delay,
@@ -122,25 +124,45 @@ export default function CrisisVoiceScreen() {
   const [flowState, setFlowState] = useState<FlowState>('init');
   const [statusText, setStatusText] = useState('Iniciando modo voz...');
   const abortRef = useRef(false);
-  const pendingRef = useRef<{ answers: AnswerValue[]; questions: string[] } | null>(null);
+  const pendingRef = useRef<{ answers: Answers; onsetAt: string | null } | null>(null);
   const savingRef = useRef(false);
+  // One request ID per recording, reused by retries, so a retried save is stored once.
+  const clientId = useRef(newClientId()).current;
+  // Set when the save failed because another crisis is still ongoing.
+  const [ongoingEpisodeId, setOngoingEpisodeId] = useState<string | null>(null);
 
   // Confirms the save only after it succeeds; on failure the answers are kept for retry.
   const saveAndFinish = useCallback(async () => {
     const pending = pendingRef.current;
     if (!pending || savingRef.current) return;
     savingRef.current = true;
+    setOngoingEpisodeId(null);
     setFlowState('done');
     setStatusText('Guardando...');
 
     try {
-      await saveCrisisEpisode(pending.answers, pending.questions);
+      await startEpisode({
+        clientId,
+        onsetAt: pending.onsetAt,
+        // Voice answers give a range ("hace entre una y tres horas"), so the onset is approximate.
+        onsetPrecision: pending.onsetAt ? 'approximate' : 'unknown',
+        source: 'voice',
+        answers: pending.answers,
+      });
     } catch (e) {
       console.error('Error saving voice crisis:', e);
       savingRef.current = false;
       setFlowState('save_failed');
-      setStatusText('No se pudo guardar tu registro.');
       await hapticWarning();
+      if (e instanceof RecordError && e.code === 'episode_ongoing') {
+        setOngoingEpisodeId(e.detail);
+        setStatusText('Ya tienes una crisis en curso. Indica cuándo terminó la anterior y luego toca reintentar.');
+        if (!abortRef.current) {
+          await speak('Ya tienes otra crisis en curso. Indica en la pantalla cuándo terminó y luego toca reintentar.');
+        }
+        return;
+      }
+      setStatusText('No se pudo guardar tu registro.');
       if (!abortRef.current) {
         await speak('No pude guardar tu registro. Revisa tu conexión y toca reintentar.');
       }
@@ -155,7 +177,7 @@ export default function CrisisVoiceScreen() {
     if (!abortRef.current) {
       router.back();
     }
-  }, [router]);
+  }, [router, clientId]);
 
   // Run the entire voice flow as an imperative async sequence
   const runFlow = useCallback(async () => {
@@ -208,16 +230,20 @@ export default function CrisisVoiceScreen() {
     const userSex = await getUserSex();
     const voiceQuestions = getVoiceQuestions(userSex);
 
-    const allAnswers: AnswerValue[] = [];
-    const allQuestionTexts: string[] = [];
+    const allAnswers: Answers = {};
+    let onsetAt: string | null = null;
 
     try {
       for (const vq of voiceQuestions) {
         if (abortRef.current) return;
 
         const answer = await processQuestion(vq);
-        allAnswers.push(answer);
-        allQuestionTexts.push(vq.questionText);
+        if (vq.questionId === 'crisis_pain_start') {
+          // Stored on the episode, not as an answer; '' means no usable answer.
+          onsetAt = typeof answer === 'string' && answer ? answer : null;
+        } else {
+          allAnswers[vq.questionId] = encodeVoiceAnswer(answer);
+        }
       }
     } catch (e) {
       if (!(e instanceof RecognitionUnavailableError)) throw e;
@@ -234,12 +260,12 @@ export default function CrisisVoiceScreen() {
     // ------------------------------------------------------------------
     // 4. Save & finish
     // ------------------------------------------------------------------
-    pendingRef.current = { answers: allAnswers, questions: allQuestionTexts };
+    pendingRef.current = { answers: allAnswers, onsetAt };
     await saveAndFinish();
   }, [router, saveAndFinish]);
 
   // Process a single VoiceQuestion (may contain multiple sub-prompts)
-  async function processQuestion(vq: VoiceQuestion): Promise<AnswerValue> {
+  async function processQuestion(vq: VoiceQuestion): Promise<FormValue> {
     const subAnswers: (string | number | boolean | null)[] = [];
 
     for (let i = 0; i < vq.prompts.length; i++) {
@@ -336,6 +362,14 @@ export default function CrisisVoiceScreen() {
             >
               <Text style={styles.actionButtonText}>Reintentar</Text>
             </Pressable>
+            {ongoingEpisodeId && (
+              <Pressable
+                style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push({ pathname: '/end-episode', params: { id: ongoingEpisodeId } })}
+              >
+                <Text style={styles.actionButtonText}>Indicar fin de la anterior</Text>
+              </Pressable>
+            )}
             <Pressable
               style={({ pressed }) => [styles.discardButton, pressed && { opacity: 0.7 }]}
               onPress={handleAbort}

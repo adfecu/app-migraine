@@ -1,0 +1,9 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Retry once with the API back. (Rapid taps can land on the tab bar after the
+# form closes, because the stored check-in comes back immediately.)
+- runFlow: ../pr2/dismiss-dev-errors.yaml
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 20000

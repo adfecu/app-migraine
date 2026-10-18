@@ -1,0 +1,15 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Fill a "no headache" check-in up to the final step, skipping the sliders.
+- runFlow: ../pr2/relaunch.yaml
+- tapOn: "Check-in"
+- tapOn: "No"
+- tapOn: "Siguiente"
+- repeat:
+    while:
+      notVisible: "Finalizar"
+    commands:
+      - tapOn: "Prefiero no responder"
+      - tapOn: "Siguiente"
+- tapOn: "Prefiero no responder"
+- assertVisible: "Finalizar"

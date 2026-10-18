@@ -2,6 +2,8 @@ appId: com.twooceansinhealth.appmigraine
 ---
 # Sliders start without a value: Siguiente stays disabled until the user
 # touches the slider or chooses "Prefiero no responder".
+# Needs a day without a check-in: otherwise the form opens with today's answers
+# (step5/run-step5.sh clears it first).
 - runFlow: relaunch.yaml
 - tapOn: "Check-in"
 - tapOn: "No"

@@ -14,8 +14,7 @@
 export {
   AnswerValue,
   CheckIn, deleteCheckIn, EntryType, getAllCheckIns,
-  getUserSex, QUESTION_PATTERNS, saveCheckIn,
-  saveCrisisEpisode
+  getUserSex, QUESTION_PATTERNS
 } from './supabaseStorage';
 
 // Import internal functions needed for evaluation

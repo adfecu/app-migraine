@@ -1,0 +1,20 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# A second crisis while one is ongoing: end the previous one, then save.
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Ya tienes una crisis en curso"
+    timeout: 20000
+- tapOn: "Indicar fin"
+- extendedWaitUntil:
+    visible: "¿Cuándo terminó la crisis?"
+    timeout: 20000
+- tapOn: "Guardar hora de fin"
+# Back on the crisis form with the answers kept.
+- extendedWaitUntil:
+    visible: "Finalizar"
+    timeout: 20000
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Crisis en curso"
+    timeout: 20000

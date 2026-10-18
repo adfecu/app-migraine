@@ -1,0 +1,32 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Signs in the local test user created by run-step5.sh. Skipped when already signed in.
+- launchApp
+- runFlow:
+    when:
+      visible: "DEVELOPMENT SERVERS"
+    commands:
+      - tapOn:
+          text: "http://.*:8081"
+          index: 0
+- extendedWaitUntil:
+    visible: "Iniciar Sesión|Resumen del último check-in"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Correo electrónico"
+    commands:
+      - tapOn: "Correo electrónico"
+      - inputText: "maestro@example.test"
+      - tapOn: "Contraseña"
+      - inputText: "Maestro12!"
+      # Tapping the title dismisses the keyboard.
+      - tapOn:
+          text: "Iniciar Sesión"
+          index: 0
+      - tapOn:
+          text: "Iniciar Sesión"
+          index: 1
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 30000

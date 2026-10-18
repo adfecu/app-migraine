@@ -5,25 +5,30 @@ import { Alert } from 'react-native';
  * Runs a save at most once at a time and reports failures.
  * `save` resolves true only after the save succeeded, so callers navigate away
  * only then; on failure the form stays as it is and an alert explains why.
+ * `handleError` can take over specific errors: return true to skip the alert.
  */
 export function useGuardedSave() {
   const [saving, setSaving] = useState(false);
   // A ref, not state, so taps that land before the next render are also ignored.
   const inFlight = useRef(false);
 
-  const save = useCallback(async (persist: () => Promise<void>): Promise<boolean> => {
+  const save = useCallback(async (
+    persist: () => Promise<void>,
+    handleError?: (error: unknown) => boolean,
+  ): Promise<boolean> => {
     if (inFlight.current) return false;
     inFlight.current = true;
     setSaving(true);
     try {
       await persist();
       return true;
-    } catch {
+    } catch (error) {
+      setSaving(false);
+      if (handleError?.(error)) return false;
       Alert.alert(
         'No se pudo guardar',
         'Tus respuestas siguen aquí. Revisa tu conexión e inténtalo de nuevo.',
       );
-      setSaving(false);
       return false;
     } finally {
       inFlight.current = false;

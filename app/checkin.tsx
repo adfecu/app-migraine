@@ -2,14 +2,16 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useGuardedSave } from '@/components/useGuardedSave';
 import Colors from '@/constants/Colors';
-import { AnswerValue, getUserSex, saveCheckIn } from '@/utils/storage';
+import { decodeAnswers, encodeAnswers, type Answers } from '@/utils/answers';
+import { getDailyCheckIn, getOngoingEpisode, localDateKey, newClientId, saveDailyCheckIn } from '@/utils/records';
+import { AnswerValue, getUserSex } from '@/utils/storage';
 
 // Question types
 type QuestionType = 'yesno' | 'slider' | 'slider_labeled' | 'multiple_choice' | 'checkbox' | 'yesno_with_text' | 'time_picker' | 'checkbox_nested';
@@ -859,6 +861,33 @@ export default function CheckinScreen() {
   // Text inputs for checkbox options with hasTextInput
   const [textInputs, setTextInputs] = useState<Record<string, Record<string, string>>>({});
 
+  // One request ID per form, reused by retries, so a retried save is stored once.
+  const clientId = useRef(newClientId()).current;
+  // The day this check-in describes, fixed when the form opens.
+  const localDate = useRef(localDateKey()).current;
+  // Saving again on the same day edits that day's check-in, so load it into the form.
+  const [editingExisting, setEditingExisting] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getDailyCheckIn(localDate)
+      .then(existing => {
+        if (cancelled || !existing) return;
+        const restored = decodeAnswers(QUESTIONS, existing.answers as Answers);
+        setAnswers(prev => {
+          const next = new Map(prev);
+          restored.values.forEach((value, id) => next.set(id, value));
+          return next;
+        });
+        setTextInputs(restored.textInputs);
+        setEditingExisting(true);
+      })
+      // Without the existing check-in the form starts empty; saving still replaces today's.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [localDate]);
+
   // Get the active questions based on Q1 answer
   const activeQuestions = useMemo(() => {
     const hadHeadache = answers.get('q1_headache') === true;
@@ -894,20 +923,27 @@ export default function CheckinScreen() {
     }
     
     if (isLastStep) {
-      // Submit answers and close modal
-      const questionTexts = activeQuestions.map(q => q.text);
-      const answerValues = activeQuestions.map(q => {
-        const answer = answers.get(q.id);
-        // Convert null to appropriate default for storage
-        if (answer === null) {
-          return q.type === 'checkbox' ? [] : '';
-        }
-        return answer;
-      }) as AnswerValue[];
+      const encoded = encodeAnswers(activeQuestions, answers, textInputs);
       // Only leave once the save succeeded; on failure the answers stay on screen.
-      if (await save(() => saveCheckIn(answerValues, questionTexts))) {
-        router.back();
+      const saved = await save(async () => {
+        await saveDailyCheckIn({ clientId, localDate, answers: encoded });
+      });
+      if (!saved) return;
+      // A check-in without headache no longer ends a crisis by itself: ask when it ended.
+      if (answers.get('q1_headache') === false) {
+        const ongoing = await getOngoingEpisode().catch(() => null);
+        if (ongoing) {
+          Alert.alert('¿Terminó tu crisis?', 'Tienes una crisis registrada como en curso.', [
+            { text: 'Todavía no', style: 'cancel', onPress: () => router.back() },
+            {
+              text: 'Sí, indicar cuándo',
+              onPress: () => router.replace({ pathname: '/end-episode', params: { id: ongoing.id } }),
+            },
+          ]);
+          return;
+        }
       }
+      router.back();
     } else {
       setCurrentStep(currentStep + 1);
     }
@@ -1041,6 +1077,11 @@ export default function CheckinScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {editingExisting && isFirstStep && (
+          <Text style={[styles.helperText, { color: Colors[colorScheme ?? 'light'].text }]}>
+            Ya registraste el check-in de hoy. Tus cambios lo reemplazarán.
+          </Text>
+        )}
         <Text style={styles.questionText}>{currentQuestion.text}</Text>
         {currentQuestion.helperText && (
           <Text style={[styles.helperText, { color: Colors[colorScheme ?? 'light'].text }]}>

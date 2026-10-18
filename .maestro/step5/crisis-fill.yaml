@@ -1,0 +1,31 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Fill the manual crisis form up to the final step. On the simulator voice mode
+# is unavailable and opens the manual form.
+- runFlow: ../pr2/relaunch.yaml
+- tapOn: "Me duele la cabeza"
+- runFlow:
+    when:
+      visible: "Allow|OK|Permitir"
+    commands:
+      - tapOn: "Allow|OK|Permitir"
+- extendedWaitUntil:
+    visible: ".*Selecciona fecha y hora"
+    timeout: 60000
+- tapOn: ".*Selecciona fecha y hora"
+- tapOn: "Confirmar"
+- tapOn: "Siguiente"
+- tapOn: "Prefiero no responder"
+- tapOn: "Siguiente"
+- tapOn: "Ninguna de las anteriores"
+- tapOn: "Siguiente"
+- tapOn: "Luces"
+- tapOn: "Siguiente"
+- tapOn: "Ninguno"
+- tapOn: "Siguiente"
+- tapOn: "Estrés"
+- tapOn: "Siguiente"
+- tapOn: "No"
+- tapOn: "Siguiente"
+- tapOn: "No"
+- assertVisible: "Finalizar"
