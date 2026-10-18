@@ -62,13 +62,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="three"
-        options={{
-          title: 'Perfil',
-          href: null, // Hide from tab bar
-        }}
-      />
     </Tabs>
   );
 }
