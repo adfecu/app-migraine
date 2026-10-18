@@ -1,11 +1,12 @@
 # Step 5 Design: Structured Records, Migration and Reports
 
-Draft, 18 October 2026. Covers Phases 2 and 3 of [the implementation plan](app-migraine-implementation-plan.md) and the report fixes that depend on them. Clinical wording and the dashboard's health indicators stay in Phase 5.
+Agreed 18 October 2026. Covers Phases 2 and 3 of [the implementation plan](app-migraine-implementation-plan.md) and the report fixes that depend on them. Clinical wording and the dashboard's health indicators stay in Phase 5.
 
 ## Decisions
 
 - Existing production data is test data: 55 records from 4 users, none newer than 14 July 2026. It is converted for continuity, with a simple reconciliation. The encrypted backup of 10 October stays the record of the original data.
-- Builds already installed (SDK 54) keep working. The database accepts their text-based payload and converts it until the new build is widely installed.
+- Builds already installed (SDK 54) keep working. The database accepts their text-based payload and converts it until they are retired; they are not blocked.
+- The pre-Supabase local-data upload is removed.
 - One daily check-in per user per local day. Saving again for the same day edits that check-in.
 - Old slider defaults are kept and marked unverified, not deleted.
 - iOS 16.4 minimum (step 4).
@@ -158,13 +159,7 @@ Afterwards the migration logs counts by type, `needs_review` and `unverified`, a
 
 ## Local-data upload
 
-The AsyncStorage upload from the pre-Supabase app is replaced:
-- The completion flag becomes per account and is written only after every record is confirmed.
-- The app asks before importing device data into the signed-in account; it never imports automatically.
-- Each local record gets a deterministic `client_id` derived from its local ID, so reruns do not duplicate.
-- Records are imported through the same `legacy_import` path as the conversion above.
-
-Recommended alternative given the decisions: remove the upload entirely, since any remaining pre-Supabase local data belongs to testers. See open questions.
+The AsyncStorage upload from the pre-Supabase app (`utils/migrateToSupabase.ts`) is removed, by decision: any remaining pre-Supabase local data belongs to testers. The app stops reading the legacy local keys; it does not delete them.
 
 ## App changes
 
@@ -179,7 +174,7 @@ Recommended alternative given the decisions: remove the upload entirely, since a
 
 1. Database migration (additive): catalog, new tables, RLS, functions, `check_ins` trigger, conversion of existing rows. Old builds keep working unchanged.
 2. App build using the new functions and tables, shipped with the store builds after the iPhone checks.
-3. After adoption: stop accepting old payloads, then drop `check_ins`, `cl_history` and `threshold_data` in a later migration.
+3. After old builds stop saving: drop the trigger, `check_ins`, `cl_history` and `threshold_data` in a later migration (see below).
 
 Rollback for step 1 is a down migration that drops the new objects; `check_ins` is never modified, so old builds are unaffected either way.
 
@@ -201,9 +196,8 @@ Rollback for step 1 is a down migration that drops the new objects; `check_ins` 
 1. Database: catalog, tables, functions, trigger, conversion, pgTAP.
 2. App writes: check-in, crisis and voice save paths; editing; ending episodes.
 3. App reads: diary, report and dashboard by question ID; day grouping.
-4. Local-data upload: harden or remove.
+4. Remove the local-data upload.
 
-## Open questions
+## Retiring old builds
 
-- Remove the pre-Supabase local-data upload (recommended) or harden it?
-- Should old builds be blocked after a cut-off date, or simply retired once usage stops?
+Old builds are not blocked. They are retired once they stop saving: when `check_ins` has received no new rows for an agreed period after the new build ships, the trigger, `check_ins`, `cl_history` and `threshold_data` are removed in a later migration.
