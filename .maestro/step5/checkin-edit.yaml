@@ -1,0 +1,16 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Opening the check-in again on the same day loads today's answers for editing.
+- runFlow: ../pr2/relaunch.yaml
+- tapOn: "Check-in"
+- assertVisible: "Ya registraste el check-in de hoy. Tus cambios lo reemplazarán."
+# The stored answers are restored, so every step is already valid.
+- repeat:
+    while:
+      notVisible: "Finalizar"
+    commands:
+      - tapOn: "Siguiente"
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Resumen del último check-in"
+    timeout: 20000

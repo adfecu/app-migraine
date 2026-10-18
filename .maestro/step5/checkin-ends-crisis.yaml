@@ -1,0 +1,15 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# A no-headache check-in while a crisis is ongoing asks when the crisis ended.
+- runFlow: checkin-fill.yaml
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "¿Terminó tu crisis?"
+    timeout: 20000
+- tapOn: "Sí, indicar cuándo"
+- extendedWaitUntil:
+    visible: "¿Cuándo terminó la crisis?"
+    timeout: 20000
+- tapOn: "Guardar hora de fin"
+- runFlow: ../pr2/relaunch.yaml
+- assertNotVisible: "Crisis en curso"

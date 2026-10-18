@@ -16,6 +16,7 @@ import {
   setMigraineAlertDismissedAt,
   shouldShowMigraineAlert,
 } from '@/utils/storage';
+import { EpisodeRecord, getOngoingEpisode } from '@/utils/records';
 
 // Neutral status colors: the summary describes answers, it does not rate risk
 const STATUS_COLORS = {
@@ -60,7 +61,7 @@ export default function TabOneScreen() {
   const router = useRouter();
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [latestCheckIn, setLatestCheckIn] = useState<CheckIn | null>(null);
-  const [activeCrisis, setActiveCrisis] = useState<CheckIn | null>(null);
+  const [activeCrisis, setActiveCrisis] = useState<EpisodeRecord | null>(null);
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
   const [showMigraineAlert, setShowMigraineAlert] = useState(false);
   const [migraineAlertData, setMigraineAlertData] = useState<MigraineAlertData | null>(null);
@@ -73,8 +74,9 @@ export default function TabOneScreen() {
   // Read-only: opening the dashboard must never write model or health data.
   const loadData = useCallback(async () => {
     let allCheckIns: CheckIn[];
+    let ongoing: EpisodeRecord | null;
     try {
-      allCheckIns = await getAllCheckIns();
+      [allCheckIns, ongoing] = await Promise.all([getAllCheckIns(), getOngoingEpisode()]);
     } catch {
       // Keep the last successful data on screen and flag it as possibly stale.
       setLoadState('error');
@@ -86,7 +88,7 @@ export default function TabOneScreen() {
     );
     const latestDaily = newestFirst.find(c => c.type === 'checkin') ?? null;
     setLatestCheckIn(latestDaily);
-    setActiveCrisis(newestFirst.find(c => c.type === 'crisis' && !c.endDate) ?? null);
+    setActiveCrisis(ongoing);
     setEvaluation(latestDaily ? evaluateMigraine(latestDaily) : DEFAULT_EVALUATION);
     setLoadState('ready');
 
@@ -139,9 +141,16 @@ export default function TabOneScreen() {
           <View style={[styles.banner, { borderColor: STATUS_COLORS.crisis }]}>
             <Text style={[styles.bannerTitle, { color: STATUS_COLORS.crisis }]}>Crisis en curso</Text>
             <Text style={styles.bannerText}>
-              Registrada el {formatEntryDate(activeCrisis.date)}. Se cerrará cuando registres un
-              check-in sin dolor de cabeza.
+              {activeCrisis.onset_at
+                ? `Empezó el ${formatEntryDate(activeCrisis.onset_at)}.`
+                : `Registrada el ${formatEntryDate(activeCrisis.recorded_at)}.`}
             </Text>
+            <Pressable
+              onPress={() => router.push({ pathname: '/end-episode', params: { id: activeCrisis.id } })}
+              style={({ pressed }) => pressed && { opacity: 0.6 }}
+            >
+              <Text style={[styles.bannerAction, { color: STATUS_COLORS.crisis }]}>Terminó la crisis</Text>
+            </Pressable>
           </View>
         )}
 

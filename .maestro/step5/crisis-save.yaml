@@ -1,0 +1,7 @@
+appId: com.twooceansinhealth.appmigraine
+---
+- tapOn: "Finalizar"
+- extendedWaitUntil:
+    visible: "Crisis en curso"
+    timeout: 20000
+- assertVisible: "Terminó la crisis"

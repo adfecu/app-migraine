@@ -3,12 +3,14 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { useGuardedSave } from '@/components/useGuardedSave';
-import { AnswerValue, getUserSex, saveCrisisEpisode } from '@/utils/storage';
+import { encodeAnswers } from '@/utils/answers';
+import { newClientId, RecordError, startEpisode } from '@/utils/records';
+import { AnswerValue, getUserSex } from '@/utils/storage';
 
 // Question types
 type QuestionType = 'yesno' | 'slider' | 'slider_labeled' | 'multiple_choice' | 'checkbox' | 'yesno_with_text' | 'datetime_picker' | 'checkbox_nested';
@@ -754,6 +756,9 @@ export default function CrisisScreen() {
   // Text inputs for checkbox options with hasTextInput
   const [textInputs, setTextInputs] = useState<Record<string, Record<string, string>>>({});
 
+  // One request ID per form, reused by retries, so a retried save is stored once.
+  const clientId = useRef(newClientId()).current;
+
   const activeQuestions = useMemo(() => {
     if (userSex !== 'male') return CRISIS_QUESTIONS;
     return CRISIS_QUESTIONS.map(q => {
@@ -786,18 +791,37 @@ export default function CrisisScreen() {
     }
 
     if (isLastStep) {
-      const questionTexts = activeQuestions.map(q => q.text);
-      const answerValues = activeQuestions.map(q => {
-        const answer = answers.get(q.id);
-        if (answer === null) {
-          return q.type === 'checkbox' ? [] : '';
-        }
-        return answer;
-      }) as AnswerValue[];
+      const onset = answers.get('crisis_pain_start');
+      const encoded = encodeAnswers(activeQuestions, answers, textInputs);
       // Only leave once the save succeeded; on failure the answers stay on screen.
-      if (await save(() => saveCrisisEpisode(answerValues, questionTexts))) {
-        router.back();
-      }
+      const saved = await save(
+        async () => {
+          await startEpisode({
+            clientId,
+            onsetAt: typeof onset === 'string' && onset ? onset : null,
+            onsetPrecision: typeof onset === 'string' && onset ? 'exact' : 'unknown',
+            source: 'manual',
+            answers: encoded,
+          });
+        },
+        (error) => {
+          if (!(error instanceof RecordError) || error.code !== 'episode_ongoing') return false;
+          // Only one crisis can be ongoing; the answers stay here while the user ends the previous one.
+          Alert.alert(
+            'Ya tienes una crisis en curso',
+            'Para registrar una nueva, indica primero cuándo terminó la anterior. Tus respuestas se mantienen.',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'Indicar fin',
+                onPress: () => router.push({ pathname: '/end-episode', params: { id: error.detail ?? '' } }),
+              },
+            ],
+          );
+          return true;
+        },
+      );
+      if (saved) router.back();
     } else {
       setCurrentStep(currentStep + 1);
     }
