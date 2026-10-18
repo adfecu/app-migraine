@@ -4,7 +4,8 @@
 # 2. A save the server stores after the app gave up (15 s timeout) is not duplicated by the retry.
 # 3. Opening the check-in again the same day edits it.
 # 4. A crisis can be ended; a second crisis asks to end the first; a no-headache check-in asks too.
-# 5. Sliders store touched values and "Prefiero no responder" as skipped.
+# 5. The diary shows today's records with their answers.
+# 6. Sliders store touched values and "Prefiero no responder" as skipped.
 # Needs: local Supabase running, the app signed in as maestro@example.test (login.yaml) on a booted simulator.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -101,7 +102,11 @@ maestro test checkin-ends-crisis.yaml
 expect "no ongoing episode after the check-in prompt" "$(sql "select count(*) from public.episodes where user_id = $USER_SQL and ended_at is null")" 0
 expect "the crisis answers are stored by ID" "$(sql "select answers->'crisis_aura'->>'status' || ':' || (answers->'crisis_intensity'->>'status') from public.episodes where user_id = $USER_SQL order by recorded_at limit 1")" "answered:skipped"
 
-echo "== 5. Sliders"
+echo "== 5. Diary"
+maestro test -e DAY="$(date +%-d)" diary-today.yaml
+echo "ok: today's crises and check-in appear in the diary with their answers"
+
+echo "== 6. Sliders"
 reset
 maestro test ../pr2/check5-sliders.yaml
 expect "a touched slider is stored, skipped ones are marked skipped" \

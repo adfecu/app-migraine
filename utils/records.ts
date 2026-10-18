@@ -11,6 +11,7 @@ import * as Crypto from 'expo-crypto';
 import type { Database } from '@/types/database';
 
 import type { Answers } from './answers';
+import { type Entry, entryFromDaily, entryFromEpisode } from './entries';
 import { supabase } from './supabase';
 
 export type DailyCheckInRecord = Database['public']['Tables']['daily_checkins']['Row'];
@@ -151,4 +152,45 @@ export async function endEpisode(id: string, endedAt: string): Promise<EpisodeRe
   });
   if (error) throw toRecordError(error);
   return data as EpisodeRecord;
+}
+
+const PAGE_SIZE = 1000;
+
+/** Reads every row of a table in pages, so histories beyond the API row limit stay complete. */
+async function readAll<T>(table: 'daily_checkins' | 'episodes', order: string): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order(order, { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw toRecordError(error);
+    rows.push(...((data ?? []) as T[]));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+/** All of the signed-in user's check-ins and episodes. */
+export async function getRecords(): Promise<{ checkIns: DailyCheckInRecord[]; episodes: EpisodeRecord[] }> {
+  const [checkIns, episodes] = await Promise.all([
+    readAll<DailyCheckInRecord>('daily_checkins', 'local_date'),
+    readAll<EpisodeRecord>('episodes', 'recorded_at'),
+  ]);
+  return { checkIns, episodes };
+}
+
+/** Deletes one of the user's records. Returns false if it was already gone. */
+export async function deleteRecord(kind: 'checkin' | 'crisis', id: string): Promise<boolean> {
+  const fn = kind === 'checkin' ? 'delete_daily_checkin' : 'delete_episode';
+  const { data, error } = await supabase.rpc(fn, { p_id: id });
+  if (error) throw toRecordError(error);
+  return data as boolean;
+}
+
+/** All of the signed-in user's records as entries for the diary, dashboard and report. */
+export async function loadEntries(): Promise<Entry[]> {
+  const { checkIns, episodes } = await getRecords();
+  return [...checkIns.map(entryFromDaily), ...episodes.map(entryFromEpisode)];
 }

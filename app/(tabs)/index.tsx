@@ -7,16 +7,15 @@ import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import {
-  CheckIn,
   evaluateMigraine,
-  getAllCheckIns,
   isMigraineAlertCooldownExpired,
   MigraineAlertData,
   MigraineEvaluation,
   setMigraineAlertDismissedAt,
   shouldShowMigraineAlert,
 } from '@/utils/storage';
-import { EpisodeRecord, getOngoingEpisode } from '@/utils/records';
+import { type Entry, newestFirst } from '@/utils/entries';
+import { loadEntries } from '@/utils/records';
 
 // Neutral status colors: the summary describes answers, it does not rate risk
 const STATUS_COLORS = {
@@ -60,8 +59,8 @@ export default function TabOneScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [latestCheckIn, setLatestCheckIn] = useState<CheckIn | null>(null);
-  const [activeCrisis, setActiveCrisis] = useState<EpisodeRecord | null>(null);
+  const [latestCheckIn, setLatestCheckIn] = useState<Entry | null>(null);
+  const [activeCrisis, setActiveCrisis] = useState<Entry | null>(null);
   const [evaluation, setEvaluation] = useState<MigraineEvaluation>(DEFAULT_EVALUATION);
   const [showMigraineAlert, setShowMigraineAlert] = useState(false);
   const [migraineAlertData, setMigraineAlertData] = useState<MigraineAlertData | null>(null);
@@ -73,26 +72,23 @@ export default function TabOneScreen() {
 
   // Read-only: opening the dashboard must never write model or health data.
   const loadData = useCallback(async () => {
-    let allCheckIns: CheckIn[];
-    let ongoing: EpisodeRecord | null;
+    let entries: Entry[];
     try {
-      [allCheckIns, ongoing] = await Promise.all([getAllCheckIns(), getOngoingEpisode()]);
+      entries = await loadEntries();
     } catch {
       // Keep the last successful data on screen and flag it as possibly stale.
       setLoadState('error');
       return;
     }
 
-    const newestFirst = [...allCheckIns].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-    const latestDaily = newestFirst.find(c => c.type === 'checkin') ?? null;
+    const sorted = newestFirst(entries);
+    const latestDaily = sorted.find(e => e.kind === 'checkin') ?? null;
     setLatestCheckIn(latestDaily);
-    setActiveCrisis(ongoing);
+    setActiveCrisis(sorted.find(e => e.kind === 'crisis' && !e.endDate) ?? null);
     setEvaluation(latestDaily ? evaluateMigraine(latestDaily) : DEFAULT_EVALUATION);
     setLoadState('ready');
 
-    const alertData = shouldShowMigraineAlert(allCheckIns);
+    const alertData = shouldShowMigraineAlert(entries);
     if (alertData && await isMigraineAlertCooldownExpired()) {
       setMigraineAlertData(alertData);
       setShowMigraineAlert(true);
@@ -141,9 +137,9 @@ export default function TabOneScreen() {
           <View style={[styles.banner, { borderColor: STATUS_COLORS.crisis }]}>
             <Text style={[styles.bannerTitle, { color: STATUS_COLORS.crisis }]}>Crisis en curso</Text>
             <Text style={styles.bannerText}>
-              {activeCrisis.onset_at
-                ? `Empezó el ${formatEntryDate(activeCrisis.onset_at)}.`
-                : `Registrada el ${formatEntryDate(activeCrisis.recorded_at)}.`}
+              {activeCrisis.onsetPrecision === 'unknown'
+                ? `Registrada el ${formatEntryDate(activeCrisis.date)}.`
+                : `Empezó el ${formatEntryDate(activeCrisis.date)}.`}
             </Text>
             <Pressable
               onPress={() => router.push({ pathname: '/end-episode', params: { id: activeCrisis.id } })}
@@ -225,12 +221,21 @@ export default function TabOneScreen() {
           animationType="fade"
           onRequestClose={dismissMigraineAlert}
         >
+          {/* Not one accessible element, so VoiceOver reaches the text and each button. */}
           <Pressable
             style={styles.alertOverlay}
             onPress={dismissMigraineAlert}
+            accessible={false}
           >
             <RNView style={styles.alertContent}>
-              <FontAwesome name="stethoscope" size={40} color={STATUS_COLORS.reported} style={styles.alertIcon} />
+              <FontAwesome
+                name="stethoscope"
+                size={40}
+                color={STATUS_COLORS.reported}
+                style={styles.alertIcon}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
 
               <Text style={styles.alertTitle}>
                 Revisa tus registros con un médico

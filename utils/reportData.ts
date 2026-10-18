@@ -1,4 +1,13 @@
-import { CheckIn } from './storage';
+import {
+  answerText,
+  durationAtLeast,
+  episodeHours,
+  type Entry,
+  isUnverified,
+  measured,
+  measuredList,
+  measuredNumber,
+} from './entries';
 
 // ============================================================================
 // Types
@@ -70,6 +79,11 @@ export interface ReportData {
   medicationOveruseWarning: boolean;
 
   episodeLog: EpisodeLogEntry[];
+
+  /** Old slider defaults (possibly not real answers) left out of the figures. */
+  excludedUnverifiedValues: number;
+  /** Converted records without a time zone, grouped by their UTC date. */
+  legacyTimeZoneRecords: number;
 }
 
 // ============================================================================
@@ -119,10 +133,6 @@ const AURA_LABELS: Record<string, string> = {
 // Utilities
 // ============================================================================
 
-function toDateKey(isoString: string): string {
-  return new Date(isoString).toISOString().split('T')[0];
-}
-
 function formatDateShort(date: Date): string {
   const d = date.getDate().toString().padStart(2, '0');
   const m = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -134,10 +144,14 @@ function formatEpisodeDate(isoString: string): string {
   return `${d.getDate()} ${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function parseDurationHours(duration: string): number | null {
-  if (duration === '<1_hora') return 0.5;
-  const match = duration.match(/^(\d+)_horas?$/);
-  return match ? parseInt(match[1], 10) : null;
+/** Escapes text typed by the user before it goes into the report HTML. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function avg(arr: number[]): number | null {
@@ -150,7 +164,7 @@ function safeArray(value: unknown): string[] {
 }
 
 // ============================================================================
-// Answer Mapper (handles both check-in and crisis question texts)
+// Answers by question ID (check-ins and crises use different questions)
 // ============================================================================
 
 interface MappedAnswers {
@@ -162,58 +176,69 @@ interface MappedAnswers {
   symptoms?: string[];
   activityImpact?: number;
   medication?: string[];
-  painManagement?: string[];
   triggers?: string[];
   sleep?: number;
   stress?: number;
   alcohol?: number;
   caffeine?: number;
   healthcareVisit?: string;
-  painStart?: string;
+  medicationText?: string;
 }
 
-function mapAllAnswers(checkIn: CheckIn): MappedAnswers {
-  const mapped: MappedAnswers = {};
+/** Questions whose numbers feed averages; old defaults on these are left out. */
+const NUMERIC_QUESTIONS = [
+  'q2_1_intensity', 'q5_1_activity_impact', 'q_sleep', 'q_stress', 'q_alcohol', 'q_caffeine', 'crisis_intensity',
+];
 
-  checkIn.questions.forEach((q, i) => {
-    const a = checkIn.answers[i];
-
-    if (q.includes('dolor de cabeza en las últimas')) mapped.headache = a as boolean;
-    else if (q.includes('intensidad')) mapped.intensity = a as number;
-    else if (q.includes('horas duró')) mapped.duration = a as string;
-    else if (q.includes('sentiste el dolor') || q.includes('sientes el dolor'))
-      mapped.painCharacteristics = a as string[];
-    else if (q.includes('aura')) mapped.aura = a as string[];
-    else if (q.includes('síntomas')) mapped.symptoms = a as string[];
-    else if (q.includes('impidió realizar')) mapped.activityImpact = a as number;
-    else if (q.includes('medicación')) mapped.medication = a as string[];
-    else if (q.includes('medidas tomaste')) mapped.painManagement = a as string[];
-    else if (q.includes('desencadenante')) mapped.triggers = a as string[];
-    else if (q.includes('horas dormiste')) mapped.sleep = a as number;
-    else if (q.includes('estresado')) mapped.stress = a as number;
-    else if (q.includes('consumido alcohol')) mapped.alcohol = a as number;
-    else if (q.includes('tazas de café')) mapped.caffeine = a as number;
-    else if (q.includes('centro de salud')) mapped.healthcareVisit = a as string;
-    else if (q.includes('comenzó el dolor')) mapped.painStart = a as string;
-  });
-
-  return mapped;
+function mapAllAnswers(entry: Entry): MappedAnswers {
+  const num = (id: string) => measuredNumber(entry, id);
+  const list = (id: string) => (measured(entry, id) === undefined ? undefined : measuredList(entry, id));
+  const str = (id: string) => {
+    const value = measured(entry, id);
+    return typeof value === 'string' ? value : undefined;
+  };
+  if (entry.kind === 'checkin') {
+    const headache = measured(entry, 'q1_headache');
+    return {
+      headache: typeof headache === 'boolean' ? headache : undefined,
+      intensity: num('q2_1_intensity'),
+      duration: str('q2_2_duration'),
+      painCharacteristics: list('q3_pain_characteristics'),
+      symptoms: list('q4_symptoms'),
+      activityImpact: num('q5_1_activity_impact'),
+      medication: list('q5_2_medication'),
+      medicationText: answerText(entry, 'q5_2_medication', 'otra_medicacion'),
+      triggers: list('q7_triggers'),
+      sleep: num('q_sleep'),
+      stress: num('q_stress'),
+      alcohol: num('q_alcohol'),
+      caffeine: num('q_caffeine'),
+    };
+  }
+  return {
+    intensity: num('crisis_intensity'),
+    painCharacteristics: list('crisis_pain_characteristics'),
+    aura: list('crisis_aura'),
+    symptoms: list('crisis_symptoms'),
+    medication: list('crisis_medication'),
+    medicationText: answerText(entry, 'crisis_medication', 'otra_medicacion'),
+    triggers: list('crisis_triggers'),
+    healthcareVisit: str('crisis_healthcare_visit'),
+  };
 }
 
 // ============================================================================
 // ICHD-3 Migraine Score (works for both check-in and crisis entries)
 // ============================================================================
 
-function computeMigraineScore(answers: MappedAnswers, entry: CheckIn): number {
+function computeMigraineScore(answers: MappedAnswers, entry: Entry): number {
   let score = 0;
 
-  if (entry.type === 'checkin' && answers.duration) {
-    const hours = parseDurationHours(answers.duration);
+  if (entry.kind === 'checkin') {
+    if (answers.duration && durationAtLeast(answers.duration, 4)) score += 30;
+  } else {
+    const hours = episodeHours(entry);
     if (hours !== null && hours >= 4) score += 30;
-  } else if (entry.type === 'crisis' && answers.painStart && entry.endDate) {
-    const hours =
-      (new Date(entry.endDate).getTime() - new Date(answers.painStart).getTime()) / 3_600_000;
-    if (hours >= 4) score += 30;
   }
 
   const painChars = safeArray(answers.painCharacteristics);
@@ -230,35 +255,50 @@ function computeMigraineScore(answers: MappedAnswers, entry: CheckIn): number {
   return Math.min(100, score);
 }
 
+/** YYYY-MM-DD of a local date. */
+function localDayKey(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
 // ============================================================================
 // Report Data Generator
 // ============================================================================
 
-export function generateReportData(checkIns: CheckIn[], periodDays: number = 90): ReportData {
+export function generateReportData(entries: Entry[], periodDays: number = 90): ReportData {
   const now = new Date();
   const periodStart = new Date(now);
   periodStart.setDate(periodStart.getDate() - periodDays);
   periodStart.setHours(0, 0, 0, 0);
 
-  const filtered = checkIns.filter(c => new Date(c.date) >= periodStart);
+  // Entries are grouped by the calendar day they belong to.
+  const periodStartKey = localDayKey(periodStart);
+  const filtered = entries.filter(e => e.dayKey >= periodStartKey);
 
-  const allMapped = filtered.map(c => ({ entry: c, answers: mapAllAnswers(c) }));
-  const checkinMapped = allMapped.filter(m => m.entry.type === 'checkin');
-  const crisisMapped = allMapped.filter(m => m.entry.type === 'crisis');
+  const allMapped = filtered.map(e => ({ entry: e, answers: mapAllAnswers(e) }));
+  const checkinMapped = allMapped.filter(m => m.entry.kind === 'checkin');
+  const crisisMapped = allMapped.filter(m => m.entry.kind === 'crisis');
+
+  const excludedUnverifiedValues = filtered.reduce(
+    (n, e) => n + NUMERIC_QUESTIONS.filter(id => isUnverified(e, id)).length,
+    0,
+  );
+  const legacyTimeZoneRecords = filtered.filter(e => e.legacyTimeZone).length;
 
   // --- Headache / headache-free date sets ---
   const headacheDates = new Set<string>();
 
   checkinMapped.forEach(({ entry, answers }) => {
-    if (answers.headache === true) headacheDates.add(toDateKey(entry.date));
+    if (answers.headache === true) headacheDates.add(entry.dayKey);
   });
   crisisMapped.forEach(({ entry }) => {
-    headacheDates.add(toDateKey(entry.date));
+    headacheDates.add(entry.dayKey);
   });
 
   const headacheFreeDates = new Set<string>();
   checkinMapped.forEach(({ entry, answers }) => {
-    const dk = toDateKey(entry.date);
+    const dk = entry.dayKey;
     if (answers.headache === false && !headacheDates.has(dk)) headacheFreeDates.add(dk);
   });
 
@@ -276,17 +316,16 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
+  const monthKey = (dayKey: string) => `${Number(dayKey.slice(0, 4))}-${Number(dayKey.slice(5, 7)) - 1}`;
   checkinMapped.forEach(({ entry, answers }) => {
     if (answers.headache === true) {
-      const d = new Date(entry.date);
-      monthMap.get(`${d.getFullYear()}-${d.getMonth()}`)?.headacheDays.add(toDateKey(entry.date));
+      monthMap.get(monthKey(entry.dayKey))?.headacheDays.add(entry.dayKey);
     }
   });
   crisisMapped.forEach(({ entry }) => {
-    const d = new Date(entry.date);
-    const bucket = monthMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+    const bucket = monthMap.get(monthKey(entry.dayKey));
     if (bucket) {
-      bucket.headacheDays.add(toDateKey(entry.date));
+      bucket.headacheDays.add(entry.dayKey);
       bucket.crisisEpisodes++;
     }
   });
@@ -318,7 +357,7 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
 
   // --- Headache episodes (both check-in headache days + crisis entries) ---
   const headacheEpisodes = allMapped.filter(
-    ({ entry, answers }) => entry.type === 'crisis' || answers.headache === true,
+    ({ entry, answers }) => entry.kind === 'crisis' || answers.headache === true,
   );
   const totalEpisodes = headacheEpisodes.length;
 
@@ -385,7 +424,7 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
   const lsN = { sleep: [] as number[], stress: [] as number[], alcohol: [] as number[], caffeine: [] as number[] };
 
   checkinMapped.forEach(({ entry, answers }) => {
-    const target = headacheDates.has(toDateKey(entry.date)) ? lsH : lsN;
+    const target = headacheDates.has(entry.dayKey) ? lsH : lsN;
     if (typeof answers.sleep === 'number') target.sleep.push(answers.sleep);
     if (typeof answers.stress === 'number') target.stress.push(answers.stress);
     if (typeof answers.alcohol === 'number') target.alcohol.push(answers.alcohol);
@@ -400,7 +439,7 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
   headacheEpisodes.forEach(({ entry, answers }) => {
     const meds = safeArray(answers.medication);
     if (meds.includes('si')) {
-      medicationDates.add(toDateKey(entry.date));
+      medicationDates.add(entry.dayKey);
       medicatedEpisodes++;
       meds.forEach(m => {
         if (m !== 'si' && m !== 'no') medCounts[m] = (medCounts[m] || 0) + 1;
@@ -416,10 +455,9 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
     .sort((a, b) => new Date(b.entry.date).getTime() - new Date(a.entry.date).getTime())
     .map(({ entry, answers }) => {
       let duration: string | null = null;
-      if (answers.painStart && entry.endDate) {
-        const h = Math.round(
-          (new Date(entry.endDate).getTime() - new Date(answers.painStart).getTime()) / 3_600_000,
-        );
+      const hours = episodeHours(entry);
+      if (hours !== null) {
+        const h = Math.round(hours);
         duration = `${h} hora${h !== 1 ? 's' : ''}`;
       }
 
@@ -427,7 +465,8 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
       const entryMeds = safeArray(answers.medication);
       if (entryMeds.includes('si')) {
         entryMeds.forEach(m => {
-          if (m !== 'si' && m !== 'no') meds.push(MEDICATION_LABELS[m] || m);
+          if (m === 'otra_medicacion' && answers.medicationText) meds.push(answers.medicationText);
+          else if (m !== 'si' && m !== 'no') meds.push(MEDICATION_LABELS[m] || m);
         });
       }
 
@@ -437,7 +476,7 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
 
       let healthcareVisit: boolean | null = null;
       if (answers.healthcareVisit !== undefined) {
-        healthcareVisit = answers.healthcareVisit !== 'no' && answers.healthcareVisit !== '';
+        healthcareVisit = answers.healthcareVisit === 'yes';
       }
 
       return {
@@ -497,12 +536,40 @@ export function generateReportData(checkIns: CheckIn[], periodDays: number = 90)
     medicationOveruseWarning: avgMedicationDaysPerMonth >= 10,
 
     episodeLog,
+
+    excludedUnverifiedValues,
+    legacyTimeZoneRecords,
   };
 }
 
 // ============================================================================
 // HTML Report Generator (for PDF export)
 // ============================================================================
+
+/**
+ * Explains which converted values were left out or grouped by UTC date, or
+ * null when the period has none.
+ */
+export function dataQualityNote(data: ReportData): string | null {
+  const notes: string[] = [];
+  const unverified = data.excludedUnverifiedValues;
+  if (unverified === 1) {
+    notes.push(
+      'Se excluye 1 valor de un registro antiguo: coincide con la posición inicial del control deslizante y puede no ser una respuesta real.',
+    );
+  } else if (unverified > 1) {
+    notes.push(
+      `Se excluyen ${unverified} valores de registros antiguos: coinciden con la posición inicial del control deslizante y pueden no ser respuestas reales.`,
+    );
+  }
+  const legacy = data.legacyTimeZoneRecords;
+  if (legacy === 1) {
+    notes.push('1 registro antiguo no guardaba la zona horaria y se agrupa por su fecha en UTC.');
+  } else if (legacy > 1) {
+    notes.push(`${legacy} registros antiguos no guardaban la zona horaria y se agrupan por su fecha en UTC.`);
+  }
+  return notes.length > 0 ? notes.join(' ') : null;
+}
 
 export function generateReportHTML(data: ReportData): string {
   const startDate = formatDateShort(data.periodStart);
@@ -543,7 +610,7 @@ export function generateReportHTML(data: ReportData): string {
           <td>${e.intensity !== null ? e.intensity + '/10' : '—'}</td>
           <td>${e.duration || '—'}</td>
           <td>${e.aura.length > 0 ? e.aura.join(', ') : 'No'}</td>
-          <td>${e.medications.length > 0 ? e.medications.join(', ') : 'No'}</td>
+          <td>${e.medications.length > 0 ? escapeHtml(e.medications.join(', ')) : 'No'}</td>
           <td>${e.healthcareVisit === true ? 'Sí' : e.healthcareVisit === false ? 'No' : '—'}</td>
         </tr>`,
     )
@@ -676,6 +743,8 @@ ${
 </table>`
     : ''
 }
+
+${dataQualityNote(data) ? `<p class="no-data">${dataQualityNote(data)}</p>` : ''}
 
 <div class="disclaimer">
   Esta información fue generada automáticamente a partir de los registros del paciente en la aplicación.

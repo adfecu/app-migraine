@@ -171,6 +171,8 @@ The AsyncStorage upload from the pre-Supabase app (`utils/migrateToSupabase.ts`)
 - The diary, report and dashboard read `daily_checkins` and `episodes` by question ID. This fixes the medication overwrite, the never-matching duration criterion, and the unrecognised crisis wording, without changing what the dashboard says.
 - Day grouping uses `local_date` for check-ins and the stored timezone for episodes, consistently in the diary, calendar and report.
 - Reports show converted legacy data as such (unverified values, unknown timezone).
+- A crisis's length counts only when the user reported its end. Old builds closed crises at the next no-headache check-in, which is not when the pain ended, so those crises have no length in the report or the migraine features.
+- Converted records show their original save time (`recorded_at`), not the conversion time.
 
 ## Rollout
 

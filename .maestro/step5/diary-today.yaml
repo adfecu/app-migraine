@@ -1,0 +1,19 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# Records saved through the new functions appear in the diary on their local day.
+# DAY is today's day of the month, passed by run-step5.sh.
+- runFlow: ../pr2/relaunch.yaml
+- runFlow: dismiss-alert.yaml
+- tapOn: ".*Diario.*"
+- extendedWaitUntil:
+    visible: "Resumen de Episodios"
+    timeout: 20000
+- tapOn: ${DAY}
+- scrollUntilVisible:
+    element: "Crisis #.*"
+    direction: DOWN
+- tapOn: "Crisis #.*"
+- scrollUntilVisible:
+    element: "¿Cuándo terminó\\?"
+    direction: DOWN
+- assertVisible: "Prefirió no responder"

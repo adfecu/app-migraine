@@ -2,6 +2,8 @@ appId: com.twooceansinhealth.appmigraine
 ---
 - tapOn: "Finalizar"
 - extendedWaitUntil:
-    visible: "Crisis en curso"
+    visible: "Crisis en curso|Revisa tus registros con un médico"
     timeout: 20000
+- runFlow: dismiss-alert.yaml
+- assertVisible: "Crisis en curso"
 - assertVisible: "Terminó la crisis"

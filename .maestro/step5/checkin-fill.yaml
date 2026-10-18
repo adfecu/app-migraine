@@ -2,6 +2,7 @@ appId: com.twooceansinhealth.appmigraine
 ---
 # Fill a "no headache" check-in up to the final step, skipping the sliders.
 - runFlow: ../pr2/relaunch.yaml
+- runFlow: dismiss-alert.yaml
 - tapOn: "Check-in"
 - tapOn: "No"
 - tapOn: "Siguiente"

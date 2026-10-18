@@ -8,7 +8,11 @@ import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { AnswerValue, CheckIn, deleteCheckIn, getAllCheckIns } from '@/utils/storage';
+import { QUESTIONS } from '@/app/checkin';
+import { CRISIS_QUESTIONS } from '@/app/crisis';
+import type { AnswerEntry, FormValue } from '@/utils/answers';
+import { type Entry, newestFirst } from '@/utils/entries';
+import { deleteRecord, loadEntries } from '@/utils/records';
 
 // Risk level colors for episode comparison
 const RISK_COLORS = {
@@ -31,45 +35,37 @@ const DEFAULT_EPISODE_STATS: EpisodeStats = {
   averageTimeBetweenCrises: null,
 };
 
-function getCrisisEpisodes(checkIns: CheckIn[]): CheckIn[] {
-  return checkIns.filter(entry => entry.type === 'crisis');
+function getCrisisEpisodes(entries: Entry[]): Entry[] {
+  return entries.filter(entry => entry.kind === 'crisis');
 }
 
-function getEpisodesInMonth(episodes: CheckIn[], year: number, month: number): CheckIn[] {
-  return episodes.filter(episode => {
-    const date = new Date(episode.date);
-    return date.getFullYear() === year && date.getMonth() === month;
-  });
+function getEpisodesInMonth(episodes: Entry[], year: number, month: number): Entry[] {
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  return episodes.filter(episode => episode.dayKey.startsWith(prefix));
 }
 
-function calculateDaysSince(dateString: string): number {
-  const episodeDate = new Date(dateString);
-  const today = new Date();
-  episodeDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const diffTime = today.getTime() - episodeDate.getTime();
-  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+/** Whole days between two YYYY-MM-DD dates. */
+function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) / 86_400_000);
 }
 
-function calculateAverageTimeBetweenCrises(episodes: CheckIn[]): number | null {
+function todayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function calculateAverageTimeBetweenCrises(episodes: Entry[]): number | null {
   if (episodes.length < 2) return null;
-  const sortedEpisodes = [...episodes].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
+  const sortedEpisodes = newestFirst(episodes).reverse();
   let totalDays = 0;
   for (let i = 1; i < sortedEpisodes.length; i++) {
-    const prevDate = new Date(sortedEpisodes[i - 1].date);
-    const currDate = new Date(sortedEpisodes[i].date);
-    prevDate.setHours(0, 0, 0, 0);
-    currDate.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-    totalDays += diffDays;
+    totalDays += daysBetween(sortedEpisodes[i - 1].dayKey, sortedEpisodes[i].dayKey);
   }
   return Math.round(totalDays / (sortedEpisodes.length - 1));
 }
 
-function calculateEpisodeStats(checkIns: CheckIn[]): EpisodeStats {
-  const crisisEpisodes = getCrisisEpisodes(checkIns);
+function calculateEpisodeStats(entries: Entry[]): EpisodeStats {
+  const crisisEpisodes = getCrisisEpisodes(entries);
   if (crisisEpisodes.length === 0) return DEFAULT_EPISODE_STATS;
 
   const now = new Date();
@@ -78,10 +74,7 @@ function calculateEpisodeStats(checkIns: CheckIn[]): EpisodeStats {
 
   const episodesThisMonth = getEpisodesInMonth(crisisEpisodes, currentYear, currentMonth).length;
 
-  const sortedByDate = [...crisisEpisodes].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-  const daysSinceLastEpisode = calculateDaysSince(sortedByDate[0].date);
+  const daysSinceLastEpisode = daysBetween(newestFirst(crisisEpisodes)[0].dayKey, todayKey());
 
   let lastMonthYear = currentYear;
   let lastMonth = currentMonth - 1;
@@ -126,14 +119,8 @@ function formatDate(isoString: string): string {
   });
 }
 
-// Convert ISO date string to YYYY-MM-DD format
-function toDateKey(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toISOString().split('T')[0];
-}
-
 // Format answer for display based on its type
-function formatAnswer(answer: AnswerValue): string {
+function formatAnswer(answer: FormValue): string {
   if (answer === '') {
     return 'Sin respuesta';
   }
@@ -171,6 +158,7 @@ function formatAnswer(answer: AnswerValue): string {
       'nada_mas': 'Nada más',
       // Medication labels
       'si': 'Sí',
+      'no': 'No',
       'ibuprofeno': 'Ibuprofeno',
       'acetaminofen': 'Acetaminofen',
       'aspirina': 'Aspirina',
@@ -231,7 +219,7 @@ function formatAnswer(answer: AnswerValue): string {
 }
 
 // Get the display style for answer (badge vs text)
-function getAnswerDisplayType(answer: AnswerValue): 'badge' | 'text' {
+function getAnswerDisplayType(answer: FormValue): 'badge' | 'text' {
   if (typeof answer === 'number') {
     return 'badge';
   }
@@ -244,8 +232,84 @@ function getAnswerDisplayType(answer: AnswerValue): 'badge' | 'text' {
   return 'text';
 }
 
+// Questions only found in converted records, whose meaning changed later.
+const RETIRED_QUESTION_TEXT: Record<string, string> = {
+  q_sleep_quality: '¿Qué tan bien dormiste anoche?',
+  q_caffeine_intake: '¿Cómo ha sido tu consumo de cafeína (café, té, refrescos)?',
+  q5_1_activity_impact_level: '¿El dolor te impidió realizar tus actividades normales hoy (trabajo, estudio, casa)?',
+};
+
+interface AnswerRow {
+  question: string;
+  text: string;
+  badge: boolean;
+}
+
+function describeAnswer(answer: AnswerEntry): AnswerRow['text'] {
+  if (answer.status === 'skipped') return 'Prefirió no responder';
+  if (answer.status === 'unknown') return 'Sin respuesta';
+  let text = formatAnswer(answer.value);
+  for (const typed of Object.values(answer.text ?? {})) text += ` (${typed})`;
+  if ((answer as { unverified?: boolean }).unverified) text += ' · sin verificar';
+  return text;
+}
+
+function formatDateTime(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** The entry's answers in the form's order, with the form's wording. */
+function entryRows(entry: Entry): AnswerRow[] {
+  const rows: AnswerRow[] = [];
+  if (entry.kind === 'crisis') {
+    rows.push({
+      question: '¿Cuándo comenzó el dolor?',
+      text:
+        entry.onsetPrecision === 'unknown'
+          ? 'Sin respuesta'
+          : `${formatDateTime(entry.date)}${entry.onsetPrecision === 'approximate' ? ' (aprox.)' : ''}`,
+      badge: false,
+    });
+    rows.push({
+      question: '¿Cuándo terminó?',
+      text: !entry.endDate
+        ? 'En curso'
+        : entry.endReported
+          ? formatDateTime(entry.endDate)
+          : `Sin registrar (cerrada por un check-in el ${formatDateTime(entry.endDate)})`,
+      badge: false,
+    });
+  }
+  const questions = entry.kind === 'crisis' ? CRISIS_QUESTIONS : QUESTIONS;
+  const ordered: [string, string][] = [
+    ...questions.map(q => [q.id, q.text] as [string, string]),
+    ...Object.entries(RETIRED_QUESTION_TEXT),
+  ];
+  for (const [id, question] of ordered) {
+    const answer = entry.answers[id];
+    if (!answer) continue;
+    rows.push({
+      question,
+      text: describeAnswer(answer),
+      badge: answer.status === 'answered' && getAnswerDisplayType(answer.value) === 'badge',
+    });
+  }
+  // Wording from old builds that could not be matched is shown as it was saved.
+  const unmapped = (entry.answers as unknown as { legacy_unmapped?: { question: string; answer: FormValue }[] })
+    .legacy_unmapped;
+  for (const item of unmapped ?? []) {
+    if (item.question) rows.push({ question: item.question, text: formatAnswer(item.answer), badge: false });
+  }
+  return rows;
+}
+
 interface DiaryEntryProps {
-  checkIn: CheckIn;
+  checkIn: Entry;
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
@@ -254,7 +318,7 @@ interface DiaryEntryProps {
 
 function DiaryEntry({ checkIn, index, isExpanded, onToggle, onDelete }: DiaryEntryProps) {
   const colorScheme = useColorScheme();
-  const isCrisis = checkIn.type === 'crisis';
+  const isCrisis = checkIn.kind === 'crisis';
   const entryLabel = isCrisis ? 'Crisis' : 'Check-in';
   
   return (
@@ -292,15 +356,13 @@ function DiaryEntry({ checkIn, index, isExpanded, onToggle, onDelete }: DiaryEnt
       
       {isExpanded && (
         <View style={styles.entryDetails}>
-          {checkIn.questions.map((question, qIndex) => {
-            const answer = checkIn.answers[qIndex];
-            const displayType = getAnswerDisplayType(answer);
-            const formattedAnswer = formatAnswer(answer);
-            
+          {entryRows(checkIn).map((row, qIndex) => {
+            const formattedAnswer = row.text;
+
             return (
               <View key={qIndex} style={styles.answerRow}>
-                <Text style={styles.questionText}>{question}</Text>
-                {displayType === 'badge' ? (
+                <Text style={styles.questionText}>{row.question}</Text>
+                {row.badge ? (
                   <View style={[
                     styles.answerBadge,
                     { backgroundColor: Colors[colorScheme ?? 'light'].tint }
@@ -343,7 +405,7 @@ function DiaryEntry({ checkIn, index, isExpanded, onToggle, onDelete }: DiaryEnt
 
 export default function DiarioScreen() {
   const colorScheme = useColorScheme();
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [checkIns, setCheckIns] = useState<Entry[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [episodeStats, setEpisodeStats] = useState<EpisodeStats>(DEFAULT_EPISODE_STATS);
@@ -351,10 +413,9 @@ export default function DiarioScreen() {
 
   const loadCheckIns = useCallback(async () => {
     try {
-      const data = await getAllCheckIns();
+      const data = await loadEntries();
       setEpisodeStats(calculateEpisodeStats(data));
-      // Show newest first
-      setCheckIns([...data].reverse());
+      setCheckIns(newestFirst(data));
       setLoadError(false);
     } catch {
       // Keep the last loaded entries; an empty diary would wrongly imply no records.
@@ -384,8 +445,8 @@ export default function DiarioScreen() {
     const datesWithCrisis = new Set<string>();
     
     checkIns.forEach(entry => {
-      const dateKey = toDateKey(entry.date);
-      if (entry.type === 'crisis') {
+      const dateKey = entry.dayKey;
+      if (entry.kind === 'crisis') {
         datesWithCrisis.add(dateKey);
       } else {
         datesWithCheckIns.add(dateKey);
@@ -455,7 +516,7 @@ export default function DiarioScreen() {
   // Filter check-ins by selected date
   const filteredCheckIns = useMemo(() => {
     if (!selectedDate) return [];
-    return checkIns.filter(checkIn => toDateKey(checkIn.date) === selectedDate);
+    return checkIns.filter(checkIn => checkIn.dayKey === selectedDate);
   }, [checkIns, selectedDate]);
 
   // Format selected date for display
@@ -481,8 +542,8 @@ export default function DiarioScreen() {
     });
   };
 
-  const handleDelete = (checkIn: CheckIn) => {
-    const isCrisis = checkIn.type === 'crisis';
+  const handleDelete = (checkIn: Entry) => {
+    const isCrisis = checkIn.kind === 'crisis';
     const entryType = isCrisis ? 'crisis' : 'check-in';
     Alert.alert(
       `Eliminar ${entryType}`,
@@ -493,8 +554,15 @@ export default function DiarioScreen() {
           text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
-            await deleteCheckIn(checkIn.id);
-            setCheckIns(prev => prev.filter(c => c.id !== checkIn.id));
+            try {
+              await deleteRecord(checkIn.kind, checkIn.id);
+            } catch {
+              Alert.alert('No se pudo eliminar', 'Revisa tu conexión e inténtalo de nuevo.');
+              return;
+            }
+            const remaining = checkIns.filter(c => c.id !== checkIn.id);
+            setCheckIns(remaining);
+            setEpisodeStats(calculateEpisodeStats(remaining));
           },
         },
       ]

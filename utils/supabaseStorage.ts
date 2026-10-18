@@ -15,28 +15,6 @@ export type AnswerValue = boolean | number | string | string[];
 
 export type EntryType = 'checkin' | 'crisis';
 
-export interface CheckIn {
-  id: string;
-  date: string; // ISO string
-  type: EntryType;
-  answers: AnswerValue[];
-  questions: string[];
-  endDate?: string; // ISO string - when crisis ended (only for crisis type)
-}
-
-// Database row types
-interface CheckInRow {
-  id: string;
-  user_id: string;
-  date: string;
-  type: string;
-  answers: AnswerValue[];
-  questions: string[];
-  end_date: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 interface UserSettingsRow {
   user_id: string;
   headache_threshold: number;
@@ -73,19 +51,6 @@ interface ThresholdData {
   headacheDayCLValues: number[];
 }
 
-// Question patterns for answer mapping
-const QUESTION_PATTERNS = {
-  headache: 'dolor de cabeza en las últimas 24 horas',
-  intensity: 'intensidad máxima',
-  duration: 'Cuántas horas duró',
-  painCharacteristics: 'Cómo sentiste el dolor',
-  symptoms: 'síntomas junto con el dolor',
-  sleep: 'Cuántas horas dormiste',
-  stress: 'Qué tan estresado',
-  alcohol: 'Has consumido alcohol',
-  caffeine: 'tazas de café',
-};
-
 // Constants
 const DEFAULT_THRESHOLD = 75;
 
@@ -103,20 +68,6 @@ async function getCurrentUserId(): Promise<string> {
     throw new Error('User not authenticated');
   }
   return user.id;
-}
-
-/**
- * Converts database row to CheckIn interface
- */
-function rowToCheckIn(row: CheckInRow): CheckIn {
-  return {
-    id: row.id,
-    date: row.date,
-    type: row.type as EntryType,
-    answers: row.answers,
-    questions: row.questions,
-    endDate: row.end_date ?? undefined,
-  };
 }
 
 /**
@@ -140,88 +91,6 @@ function getYesterdayKey(): string {
  */
 function getTodayKey(): string {
   return toDateKey(new Date().toISOString());
-}
-
-// ============================================================================
-// Check-in Functions
-// ============================================================================
-
-/**
- * Gets all check-ins for the current user
- * @throws if the user is not authenticated or the request fails
- */
-export async function getAllCheckIns(): Promise<CheckIn[]> {
-  try {
-    const userId = await getCurrentUserId();
-    
-    const { data, error } = await supabase
-      .from('check_ins')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: true });
-    
-    if (error) {
-      throw error;
-    }
-    
-    return (data || []).map(rowToCheckIn);
-  } catch (error) {
-    // Rethrow so screens can show a failure instead of an empty history.
-    console.error('Error getting check-ins:', error);
-    throw error;
-  }
-}
-
-/**
- * Gets the most recent check-in for the current user
- */
-export async function getLatestCheckIn(): Promise<CheckIn | null> {
-  try {
-    const userId = await getCurrentUserId();
-    
-    const { data, error } = await supabase
-      .from('check_ins')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // No rows returned
-        return null;
-      }
-      throw error;
-    }
-    
-    return data ? rowToCheckIn(data) : null;
-  } catch (error) {
-    console.error('Error getting latest check-in:', error);
-    return null;
-  }
-}
-
-/**
- * Deletes a check-in by ID
- */
-export async function deleteCheckIn(id: string): Promise<void> {
-  try {
-    const userId = await getCurrentUserId();
-    
-    const { error } = await supabase
-      .from('check_ins')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-    
-    if (error) {
-      throw error;
-    }
-  } catch (error) {
-    console.error('Error deleting check-in:', error);
-    throw error;
-  }
 }
 
 // ============================================================================
@@ -576,5 +445,5 @@ export async function calculateAndSaveCumulativeLoad(dailyTensionLoad: number): 
 // Export utility functions for use in storage.ts
 // ============================================================================
 
-export { DEFAULT_THRESHOLD, getTodayKey, getYesterdayKey, QUESTION_PATTERNS, toDateKey };
+export { DEFAULT_THRESHOLD, getTodayKey, getYesterdayKey, toDateKey };
 
