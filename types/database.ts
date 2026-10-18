@@ -74,6 +74,101 @@ export type Database = {
         };
         Relationships: [];
       };
+      daily_checkins: {
+        Row: {
+          answers: NonNullable<Json>;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          local_date: string;
+          needs_review: boolean;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          answers: NonNullable<Json>;
+          form_version: number;
+          id?: string;
+          legacy_check_in_id?: string | null;
+          local_date: string;
+          needs_review?: boolean;
+          recorded_at?: string;
+          source: string;
+          time_zone?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          answers?: NonNullable<Json>;
+          form_version?: number;
+          id?: string;
+          legacy_check_in_id?: string | null;
+          local_date?: string;
+          needs_review?: boolean;
+          recorded_at?: string;
+          source?: string;
+          time_zone?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      episodes: {
+        Row: {
+          answers: NonNullable<Json>;
+          end_source: string | null;
+          ended_at: string | null;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          needs_review: boolean;
+          onset_at: string | null;
+          onset_precision: string;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          answers: NonNullable<Json>;
+          end_source?: string | null;
+          ended_at?: string | null;
+          form_version: number;
+          id?: string;
+          legacy_check_in_id?: string | null;
+          needs_review?: boolean;
+          onset_at?: string | null;
+          onset_precision: string;
+          recorded_at?: string;
+          source: string;
+          time_zone?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          answers?: NonNullable<Json>;
+          end_source?: string | null;
+          ended_at?: string | null;
+          form_version?: number;
+          id?: string;
+          legacy_check_in_id?: string | null;
+          needs_review?: boolean;
+          onset_at?: string | null;
+          onset_precision?: string;
+          recorded_at?: string;
+          source?: string;
+          time_zone?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       threshold_data: {
         Row: {
           cl_value: number;
@@ -132,7 +227,124 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      delete_daily_checkin: { Args: { p_id: string }; Returns: boolean };
+      delete_episode: { Args: { p_id: string }; Returns: boolean };
+      end_episode: {
+        Args: { p_ended_at: string; p_episode_id: string };
+        Returns: {
+          answers: NonNullable<Json>;
+          end_source: string | null;
+          ended_at: string | null;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          needs_review: boolean;
+          onset_at: string | null;
+          onset_precision: string;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "episodes";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      save_daily_checkin: {
+        Args: {
+          p_answers: Json;
+          p_client_id: string;
+          p_form_version: number;
+          p_local_date: string;
+          p_time_zone: string;
+        };
+        Returns: {
+          answers: NonNullable<Json>;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          local_date: string;
+          needs_review: boolean;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "daily_checkins";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      start_episode: {
+        Args: {
+          p_answers: Json;
+          p_client_id: string;
+          p_form_version: number;
+          p_onset_at: string;
+          p_onset_precision: string;
+          p_source: string;
+          p_time_zone: string;
+        };
+        Returns: {
+          answers: NonNullable<Json>;
+          end_source: string | null;
+          ended_at: string | null;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          needs_review: boolean;
+          onset_at: string | null;
+          onset_precision: string;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "episodes";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      update_episode: {
+        Args: {
+          p_answers: Json;
+          p_episode_id: string;
+          p_onset_at: string;
+          p_onset_precision: string;
+        };
+        Returns: {
+          answers: NonNullable<Json>;
+          end_source: string | null;
+          ended_at: string | null;
+          form_version: number;
+          id: string;
+          legacy_check_in_id: string | null;
+          needs_review: boolean;
+          onset_at: string | null;
+          onset_precision: string;
+          recorded_at: string;
+          source: string;
+          time_zone: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "episodes";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
     };
     Enums: {
       [_ in never]: never;
