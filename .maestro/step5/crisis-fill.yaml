@@ -3,6 +3,7 @@ appId: com.twooceansinhealth.appmigraine
 # Fill the manual crisis form up to the final step. On the simulator voice mode
 # is unavailable and opens the manual form.
 - runFlow: ../pr2/relaunch.yaml
+- runFlow: dismiss-alert.yaml
 - tapOn: "Me duele la cabeza"
 - runFlow:
     when:

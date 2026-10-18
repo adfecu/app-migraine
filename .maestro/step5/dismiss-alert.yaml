@@ -1,0 +1,8 @@
+appId: com.twooceansinhealth.appmigraine
+---
+# The dashboard suggests a medical review while a crisis is ongoing (once per 24 h).
+- runFlow:
+    when:
+      visible: "Revisa tus registros con un médico"
+    commands:
+      - tapOn: "Entendido"

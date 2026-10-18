@@ -11,20 +11,19 @@
  */
 
 // Re-export types and storage functions from supabaseStorage
-export {
-  AnswerValue,
-  CheckIn, deleteCheckIn, EntryType, getAllCheckIns,
-  getUserSex, QUESTION_PATTERNS
-} from './supabaseStorage';
+export { AnswerValue, getUserSex } from './supabaseStorage';
 
-// Import internal functions needed for evaluation
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  AnswerValue,
-  CheckIn,
-  QUESTION_PATTERNS,
-} from './supabaseStorage';
+  durationAtLeast,
+  episodeHours,
+  type Entry,
+  measured,
+  measuredList,
+  measuredNumber,
+  newestFirst,
+} from './entries';
 
 // ============================================================================
 // Migraine Evaluation Types and Helpers
@@ -42,47 +41,15 @@ export interface MigraineEvaluation {
 }
 
 /**
- * Maps check-in answers by question type using question text patterns
- */
-export function mapAnswersByQuestion(checkIn: CheckIn): Record<string, AnswerValue> {
-  const mapped: Record<string, AnswerValue> = {};
-  
-  checkIn.questions.forEach((questionText, index) => {
-    if (questionText.includes(QUESTION_PATTERNS.headache)) {
-      mapped['headache'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.intensity)) {
-      mapped['intensity'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.duration)) {
-      mapped['duration'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.painCharacteristics)) {
-      mapped['painCharacteristics'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.symptoms)) {
-      mapped['symptoms'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.sleep)) {
-      mapped['sleep'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.stress)) {
-      mapped['stress'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.alcohol)) {
-      mapped['alcohol'] = checkIn.answers[index];
-    } else if (questionText.includes(QUESTION_PATTERNS.caffeine)) {
-      mapped['caffeine'] = checkIn.answers[index];
-    }
-  });
-  
-  return mapped;
-}
-
-/**
  * Evaluates migraine criteria based on check-in answers
  * Based on ICHD-3 criteria B-D (criterion A requires ≥5 attacks, not tracked per check-in)
  */
-export function evaluateMigraine(checkIn: CheckIn): MigraineEvaluation {
-  const answers = mapAnswersByQuestion(checkIn);
+export function evaluateMigraine(checkIn: Entry): MigraineEvaluation {
   const reasonsMet: string[] = [];
   const reasonsNotMet: string[] = [];
   
   // Check if headache was reported
-  const hadHeadache = answers['headache'] === true;
+  const hadHeadache = measured(checkIn, 'q1_headache') === true;
   
   if (!hadHeadache) {
     return {
@@ -97,8 +64,8 @@ export function evaluateMigraine(checkIn: CheckIn): MigraineEvaluation {
   let scorePoints = 0;
   
   // Criterion B: Duration 4-72 hours
-  const duration = answers['duration'] as string;
-  const meetsDuration = duration === '4-12_horas' || duration === 'todo_el_dia';
+  const duration = measured(checkIn, 'q2_2_duration');
+  const meetsDuration = typeof duration === 'string' && durationAtLeast(duration, 4);
   if (meetsDuration) {
     scorePoints += 30;
     reasonsMet.push('Duración ≥4 horas');
@@ -107,8 +74,8 @@ export function evaluateMigraine(checkIn: CheckIn): MigraineEvaluation {
   }
   
   // Criterion C: Pain characteristics (need ≥2 of 4)
-  const intensity = answers['intensity'] as number;
-  const painChars = (answers['painCharacteristics'] as string[]) || [];
+  const intensity = measuredNumber(checkIn, 'q2_1_intensity');
+  const painChars = measuredList(checkIn, 'q3_pain_characteristics');
   
   let painFeaturesCount = 0;
   
@@ -150,7 +117,7 @@ export function evaluateMigraine(checkIn: CheckIn): MigraineEvaluation {
   }
   
   // Criterion D: Associated symptoms (need ≥1)
-  const symptoms = (answers['symptoms'] as string[]) || [];
+  const symptoms = measuredList(checkIn, 'q4_symptoms');
   
   let symptomFeaturesCount = 0;
   
@@ -219,38 +186,21 @@ export async function setMigraineAlertDismissedAt(): Promise<void> {
   await AsyncStorage.setItem(MIGRAINE_ALERT_DISMISSED_KEY, new Date().toISOString());
 }
 
-/**
- * Simplified migraine score for crisis entries whose question wording
- * differs from check-in questions (mapAnswersByQuestion won't match).
- */
-function scoreCrisisEntry(entry: CheckIn): number {
+/** The same features scored for a crisis, using its own questions and its length. */
+function scoreCrisisEntry(entry: Entry): number {
   let score = 0;
-  const qMap: Record<string, AnswerValue> = {};
+  const hours = episodeHours(entry);
+  if (hours !== null && hours >= 4) score += 30;
 
-  entry.questions.forEach((q, i) => {
-    const a = entry.answers[i];
-    if (q.includes('intensidad')) qMap['intensity'] = a;
-    else if (q.includes('sentiste el dolor') || q.includes('sientes el dolor'))
-      qMap['painChars'] = a;
-    else if (q.includes('síntomas')) qMap['symptoms'] = a;
-    else if (q.includes('comenzó el dolor')) qMap['painStart'] = a;
-  });
-
-  if (qMap['painStart'] && entry.endDate) {
-    const hours =
-      (new Date(entry.endDate).getTime() - new Date(qMap['painStart'] as string).getTime()) /
-      3_600_000;
-    if (hours >= 4) score += 30;
-  }
-
-  const painChars = Array.isArray(qMap['painChars']) ? qMap['painChars'] as string[] : [];
+  const painChars = measuredList(entry, 'crisis_pain_characteristics');
   if (painChars.includes('unilateral')) score += 10;
   if (painChars.includes('pulsatil')) score += 10;
   if (painChars.includes('agravamiento_actividad')) score += 10;
 
-  if (typeof qMap['intensity'] === 'number' && qMap['intensity'] >= 4) score += 20;
+  const intensity = measuredNumber(entry, 'crisis_intensity');
+  if (intensity !== undefined && intensity >= 4) score += 20;
 
-  const symptoms = Array.isArray(qMap['symptoms']) ? qMap['symptoms'] as string[] : [];
+  const symptoms = measuredList(entry, 'crisis_symptoms');
   if (symptoms.includes('nauseas')) score += 10;
   if (symptoms.includes('luz_ruido')) score += 10;
 
@@ -267,70 +217,42 @@ function scoreCrisisEntry(entry: CheckIn): number {
  *  3. Chronic pattern (>= 15 headache days/month over last 90 days)
  *  4. >50 % of recent headache episodes score >= 70, with >= 3 episodes
  */
-export function shouldShowMigraineAlert(checkIns: CheckIn[]): MigraineAlertData | null {
-  if (checkIns.length === 0) return null;
+export function shouldShowMigraineAlert(entries: Entry[], today: Date = new Date()): MigraineAlertData | null {
+  if (entries.length === 0) return null;
 
   const reasons: string[] = [];
+  const hadHeadache = (entry: Entry) => entry.kind === 'crisis' || measured(entry, 'q1_headache') === true;
 
   // --- Condition 1: Immediate high score on latest check-in ---
-  const sorted = [...checkIns].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-  );
-  const latestCheckin = sorted.find(c => c.type === 'checkin');
-  if (latestCheckin) {
-    const evalResult = evaluateMigraine(latestCheckin);
-    if (evalResult.mayHaveMigraine) {
-      reasons.push('Tu último check-in reúne los rasgos de migraña de los criterios ICHD-3');
-    }
+  const latestCheckin = newestFirst(entries).find(e => e.kind === 'checkin');
+  if (latestCheckin && evaluateMigraine(latestCheckin).mayHaveMigraine) {
+    reasons.push('Tu último check-in reúne los rasgos de migraña de los criterios ICHD-3');
   }
 
   // --- Condition 2: Active unresolved crisis ---
-  const activeCrisis = checkIns.some(c => c.type === 'crisis' && !c.endDate);
-  if (activeCrisis) {
+  if (entries.some(e => e.kind === 'crisis' && !e.endDate)) {
     reasons.push('Tienes un episodio de crisis activo sin resolver');
   }
 
-  // --- Conditions 3 & 4: pattern-based (last 90 days) ---
-  const now = new Date();
-  const cutoff = new Date(now);
+  // --- Conditions 3 & 4: pattern-based (last 90 days, by calendar day) ---
+  const cutoff = new Date(today);
   cutoff.setDate(cutoff.getDate() - 90);
-
-  const recent = checkIns.filter(c => new Date(c.date) >= cutoff);
+  const cutoffKey = localDayKey(cutoff);
+  const recent = entries.filter(e => e.dayKey >= cutoffKey);
 
   // Condition 3: Chronic pattern (>= 15 headache days / month)
-  const headacheDates = new Set<string>();
-  for (const entry of recent) {
-    if (entry.type === 'crisis') {
-      headacheDates.add(new Date(entry.date).toISOString().split('T')[0]);
-    } else {
-      const mapped = mapAnswersByQuestion(entry);
-      if (mapped['headache'] === true) {
-        headacheDates.add(new Date(entry.date).toISOString().split('T')[0]);
-      }
-    }
-  }
+  const headacheDays = new Set(recent.filter(hadHeadache).map(e => e.dayKey));
   const months = Math.max(1, 90 / 30);
-  const headacheDaysPerMonth = headacheDates.size / months;
-  if (headacheDaysPerMonth >= 15) {
-    reasons.push(
-      `Registraste ${headacheDates.size} días con dolor de cabeza en los últimos 90 días`,
-    );
+  if (headacheDays.size / months >= 15) {
+    reasons.push(`Registraste ${headacheDays.size} días con dolor de cabeza en los últimos 90 días`);
   }
 
   // Condition 4: Frequent high-score episodes (>50 % scoring >= 70, min 3)
-  const headacheEpisodes = recent.filter(c => {
-    if (c.type === 'crisis') return true;
-    const mapped = mapAnswersByQuestion(c);
-    return mapped['headache'] === true;
-  });
-
+  const headacheEpisodes = recent.filter(hadHeadache);
   if (headacheEpisodes.length >= 3) {
     let highCount = 0;
     for (const ep of headacheEpisodes) {
-      const score =
-        ep.type === 'crisis'
-          ? scoreCrisisEntry(ep)
-          : evaluateMigraine(ep).score;
+      const score = ep.kind === 'crisis' ? scoreCrisisEntry(ep) : evaluateMigraine(ep).score;
       if (score >= 70) highCount++;
     }
     const pct = Math.round((highCount / headacheEpisodes.length) * 100);
@@ -343,6 +265,12 @@ export function shouldShowMigraineAlert(checkIns: CheckIn[]): MigraineAlertData 
 
   if (reasons.length === 0) return null;
   return { reasons };
+}
+
+function localDayKey(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${m}-${d}`;
 }
 
 /**

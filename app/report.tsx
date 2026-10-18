@@ -15,8 +15,9 @@ import {
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { getAllCheckIns } from '@/utils/storage';
+import { loadEntries } from '@/utils/records';
 import {
+  dataQualityNote,
   generateReportData,
   generateReportHTML,
   ReportData,
@@ -41,8 +42,8 @@ export default function ReportScreen() {
     setLoading(true);
     setLoadError(false);
     try {
-      const checkIns = await getAllCheckIns();
-      const report = generateReportData(checkIns, days);
+      const entries = await loadEntries();
+      const report = generateReportData(entries, days);
       setData(report);
     } catch (e) {
       console.error('Error generating report:', e);
@@ -427,6 +428,7 @@ export default function ReportScreen() {
           )}
 
           {/* Disclaimer */}
+          {dataQualityNote(data) && <Text style={styles.disclaimer}>{dataQualityNote(data)}</Text>}
           <Text style={styles.disclaimer}>
             Esta información fue generada automáticamente y no constituye un diagnóstico médico. La
             evaluación de migraña se basa en los criterios ICHD-3. Consulte a un profesional de
