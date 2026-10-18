@@ -9,7 +9,6 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { migrateToSupabase, needsMigration } from '@/utils/migrateToSupabase';
 import { scheduleDailyCheckinNotification } from '@/utils/notifications';
 import {
   NOTIFICATION_HOUR_KEY,
@@ -68,39 +67,7 @@ function RootLayoutNav() {
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const [migrationChecked, setMigrationChecked] = useState(false);
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
-
-  // Check and perform data migration when user is authenticated
-  useEffect(() => {
-    const checkAndMigrate = async () => {
-      if (!session || migrationChecked) return;
-      
-      try {
-        const shouldMigrate = await needsMigration();
-        if (shouldMigrate) {
-          console.log('Starting data migration to Supabase...');
-          const result = await migrateToSupabase(false); // Keep local data as backup
-          if (result.success) {
-            console.log('Migration completed:', {
-              checkIns: result.checkInsMigrated,
-              clHistory: result.clHistoryMigrated,
-              thresholdData: result.thresholdDataMigrated,
-              settings: result.settingsMigrated,
-            });
-          } else {
-            console.warn('Migration completed with errors:', result.errors);
-          }
-        }
-      } catch (error) {
-        console.error('Migration check failed:', error);
-      } finally {
-        setMigrationChecked(true);
-      }
-    };
-    
-    checkAndMigrate();
-  }, [session, migrationChecked]);
 
   // Initialize notifications when user is authenticated.
   // For new users, onboarding handles permissions and scheduling, so we skip
